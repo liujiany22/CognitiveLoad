@@ -1,0 +1,78 @@
+# ---- OS / editor ----
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+
+.Python
+*.so
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+
+# Jupyter / IPython
+.ipynb_checkpoints/
+.jupyter/
+ipython_config.py
+
+# ---- ML / experiment outputs (common) ----
+runs/
+logs/
+log/
+tb_logs/
+wandb/
+lightning_logs/
+mlruns/
+checkpoints/
+checkpoints*/
+outputs/
+output/
+results/
+result/
+*.ckpt
+*.pt
+*.pth
+*.onnx
+
+# Project-specific caches / extracted features
+code/data_cache/
+NICE-EEG-main/dnn_feature/
+
+# ---- Data artifacts (often large) ----
+*.npz
+*.npy
+*.pkl
+*.pickle
+
+# ---- Credentials ----
+.env
+.env.*
+

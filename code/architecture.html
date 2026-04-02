@@ -1,0 +1,1227 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DualAlign-CogLoad Architecture</title>
+<style>
+  :root {
+    --bg: #f9fafb; --card: #ffffff; --border: #d0d7de;
+    --text: #1f2328; --dim: #656d76; --accent: #0969da;
+    --green: #1a7f37; --orange: #bf8700; --red: #cf222e;
+    --purple: #8250df; --cyan: #0550ae; --pink: #bf3989;
+    --s1: #0969da; --s2a: #bf8700; --s2b: #8250df; --s3: #1a7f37;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:var(--bg); color:var(--text); font-family:'Segoe UI',system-ui,sans-serif; padding:24px; line-height:1.5; }
+  h1 { text-align:center; font-size:1.6rem; margin-bottom:8px; }
+  .subtitle { text-align:center; color:var(--dim); margin-bottom:16px; font-size:0.9rem; }
+
+  .lang-switch { display:flex; justify-content:center; gap:0; margin-bottom:20px; }
+  .lang-btn { padding:6px 18px; cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--dim); font-size:0.8rem; transition:all .2s; }
+  .lang-btn:first-child { border-radius:6px 0 0 6px; }
+  .lang-btn:last-child { border-radius:0 6px 6px 0; }
+  .lang-btn.active { background:var(--accent); color:#ffffff; border-color:var(--accent); font-weight:700; }
+
+  .tabs { display:flex; justify-content:center; gap:8px; margin-bottom:24px; flex-wrap:wrap; }
+  .tab { padding:8px 20px; border-radius:8px; cursor:pointer; border:1px solid var(--border); background:var(--card); color:var(--dim); font-size:0.85rem; transition:all .2s; }
+  .tab:hover { border-color:var(--accent); color:var(--text); }
+  .tab.active { border-color:var(--accent); color:var(--accent); background:#eef2f6; font-weight:600; }
+  .panel { display:none; }
+  .panel.active { display:block; }
+  .arch-container { max-width:1100px; margin:0 auto; }
+  svg { width:100%; height:auto; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; margin-bottom:16px; box-shadow:0 1px 3px rgba(0,0,0,0.08); }
+  .card h3 { font-size:1rem; margin-bottom:10px; }
+  .card code { background:#eef2f6; padding:2px 6px; border-radius:4px; font-size:0.82rem; color:var(--cyan); }
+  .badge { display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:600; margin-right:4px; }
+  .badge-s1 { background:#0969da15; color:var(--s1); border:1px solid #0969da30; }
+  .badge-s2a { background:#bf870015; color:var(--s2a); border:1px solid #bf870030; }
+  .badge-s2b { background:#8250df15; color:var(--s2b); border:1px solid #8250df30; }
+  .badge-s3 { background:#1a7f3715; color:var(--s3); border:1px solid #1a7f3730; }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:0.85rem; }
+  th,td { padding:8px 12px; text-align:left; border-bottom:1px solid var(--border); }
+  th { color:var(--dim); font-weight:600; font-size:0.8rem; text-transform:uppercase; letter-spacing:0.5px; }
+  .tensor { color:var(--pink); font-family:monospace; font-size:0.82rem; }
+  .layer-list { list-style:none; padding:0; }
+  .layer-list li { padding:6px 12px; margin:4px 0; background:#eef2f6; border-radius:6px; font-size:0.85rem; border-left:3px solid var(--accent); display:flex; justify-content:space-between; }
+  .layer-list li .shape { color:var(--pink); font-family:monospace; font-size:0.8rem; }
+  .flow-arrow { color:var(--dim); text-align:center; font-size:1.2rem; margin:4px 0; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media(max-width:800px) { .grid2 { grid-template-columns:1fr; } }
+  .highlight { border-left:3px solid; padding-left:12px; margin:10px 0; }
+  .hl-s1 { border-color:var(--s1); }
+  .hl-s2a { border-color:var(--s2a); }
+  .hl-s2b { border-color:var(--s2b); }
+  .hl-s3 { border-color:var(--s3); }
+  .frozen { opacity:0.6; font-style:italic; }
+  .trainable { font-weight:600; }
+  .legend { display:flex; gap:16px; justify-content:center; flex-wrap:wrap; margin:16px 0; font-size:0.8rem; }
+  .legend-item { display:flex; align-items:center; gap:6px; }
+  .legend-dot { width:12px; height:12px; border-radius:3px; }
+</style>
+</head>
+<body>
+<h1 data-i18n="title"></h1>
+<p class="subtitle" data-i18n="subtitle"></p>
+
+<div class="lang-switch">
+  <div class="lang-btn active" onclick="setLang('zh')">中文</div>
+  <div class="lang-btn" onclick="setLang('en')">English</div>
+</div>
+
+<div class="tabs" id="main-tabs">
+  <div class="tab active" onclick="showPanel('overview')" data-i18n="tab_overview"></div>
+  <div class="tab" onclick="showPanel('encoder')" data-i18n="tab_encoder"></div>
+  <div class="tab" onclick="showPanel('stage1')" data-i18n="tab_stage1"></div>
+  <div class="tab" onclick="showPanel('stage2')" data-i18n="tab_stage2"></div>
+  <div class="tab" onclick="showPanel('stage3')" data-i18n="tab_stage3"></div>
+  <div class="tab" onclick="showPanel('dims')" data-i18n="tab_dims"></div>
+  <div class="tab" onclick="showPanel('data')" data-i18n="tab_data"></div>
+</div>
+
+<!-- ===== OVERALL PIPELINE ===== -->
+<div class="panel active" id="panel-overview">
+<div class="arch-container">
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--s1)"></div><span data-i18n="leg_s1"></span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--s2a)"></div><span data-i18n="leg_s2a"></span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--s2b)"></div><span data-i18n="leg_s2b"></span></div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--s3)"></div><span data-i18n="leg_s3"></span></div>
+</div>
+
+<svg viewBox="0 0 1060 820" xmlns="http://www.w3.org/2000/svg" style="max-height:820px">
+  <defs>
+    <marker id="ah-b" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#0969da"/></marker>
+    <marker id="ah-o" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#bf8700"/></marker>
+    <marker id="ah-p" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#8250df"/></marker>
+    <marker id="ah-g" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#1a7f37"/></marker>
+    <marker id="ah-d" markerWidth="8" markerHeight="6" refX="8" refY="3" orient="auto"><path d="M0,0 L8,3 L0,6" fill="#656d76"/></marker>
+  </defs>
+
+  <rect x="20" y="20" width="200" height="60" rx="10" fill="#f1f5f9" stroke="#d0d7de"/>
+  <text x="120" y="42" text-anchor="middle" fill="#1f2328" font-size="12" font-weight="600" data-i18n-svg="svg_eeg_input"></text>
+  <text x="120" y="58" text-anchor="middle" fill="#bf3989" font-size="10" font-family="monospace">(B, 1, 23, 512)</text>
+
+  <rect x="260" y="20" width="200" height="60" rx="10" fill="#f1f5f9" stroke="#d0d7de"/>
+  <text x="360" y="42" text-anchor="middle" fill="#1f2328" font-size="12" font-weight="600" data-i18n-svg="svg_text_desc"></text>
+  <text x="360" y="58" text-anchor="middle" fill="#656d76" font-size="10" data-i18n-svg="svg_9cond"></text>
+
+  <rect x="500" y="20" width="220" height="60" rx="10" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
+  <text x="610" y="42" text-anchor="middle" fill="#656d76" font-size="12">SentenceTransformer</text>
+  <text x="610" y="58" text-anchor="middle" fill="#656d76" font-size="10" font-style="italic" data-i18n-svg="svg_frozen_model"></text>
+
+  <rect x="760" y="20" width="170" height="60" rx="10" fill="#f1f5f9" stroke="#d0d7de"/>
+  <text x="845" y="42" text-anchor="middle" fill="#1f2328" font-size="12" font-weight="600" data-i18n-svg="svg_text_emb"></text>
+  <text x="845" y="58" text-anchor="middle" fill="#bf3989" font-size="10" font-family="monospace" data-i18n-svg="svg_frozen_384"></text>
+
+  <line x1="460" y1="50" x2="498" y2="50" stroke="#656d76" stroke-width="1.5" marker-end="url(#ah-d)"/>
+  <line x1="720" y1="50" x2="758" y2="50" stroke="#656d76" stroke-width="1.5" marker-end="url(#ah-d)"/>
+
+  <rect x="20" y="130" width="430" height="200" rx="12" fill="none" stroke="#0969da" stroke-width="2" stroke-dasharray="6"/>
+  <text x="36" y="148" fill="#0969da" font-size="11" font-weight="700" data-i18n-svg="svg_s1_title"></text>
+
+  <rect x="40" y="165" width="180" height="50" rx="8" fill="#dbeafe" stroke="#0969da"/>
+  <text x="130" y="185" text-anchor="middle" fill="#0969da" font-size="11" font-weight="600" data-i18n-svg="svg_cross_enc"></text>
+  <text x="130" y="200" text-anchor="middle" fill="#656d76" font-size="9" data-i18n-svg="svg_shared_w"></text>
+  <text x="130" y="210" text-anchor="middle" fill="#bf3989" font-size="9" font-family="monospace">&#8594; (B, 256)</text>
+
+  <rect x="250" y="165" width="180" height="50" rx="8" fill="#dbeafe" stroke="#0969da"/>
+  <text x="340" y="185" text-anchor="middle" fill="#0969da" font-size="11" font-weight="600" data-i18n-svg="svg_contr_proj"></text>
+  <text x="340" y="200" text-anchor="middle" fill="#656d76" font-size="9">Linear(256,256) &#8594; ReLU &#8594; Linear(256,128)</text>
+  <text x="340" y="210" text-anchor="middle" fill="#bf3989" font-size="9" font-family="monospace">&#8594; (B, 128)</text>
+
+  <line x1="220" y1="190" x2="248" y2="190" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+
+  <rect x="70" y="240" width="350" height="70" rx="8" fill="#e0f2fe" stroke="#0969da" stroke-dasharray="3"/>
+  <text x="245" y="260" text-anchor="middle" fill="#0969da" font-size="11" font-weight="600">InfoNCE Loss (NT-Xent)</text>
+  <text x="245" y="278" text-anchor="middle" fill="#656d76" font-size="9" data-i18n-svg="svg_infonce_desc"></text>
+  <text x="245" y="293" text-anchor="middle" fill="#656d76" font-size="9" data-i18n-svg="svg_infonce_opt"></text>
+
+  <rect x="20" y="360" width="1020" height="220" rx="12" fill="none" stroke="#8250df" stroke-width="2" stroke-dasharray="6"/>
+  <text x="36" y="378" fill="#8250df" font-size="11" font-weight="700" data-i18n-svg="svg_s2_title"></text>
+
+  <rect x="550" y="395" width="470" height="80" rx="10" fill="none" stroke="#bf8700" stroke-width="1.5"/>
+  <text x="565" y="412" fill="#bf8700" font-size="10" font-weight="700" data-i18n-svg="svg_phaseA"></text>
+
+  <rect x="565" y="420" width="150" height="42" rx="6" fill="#fef3c7" stroke="#bf8700"/>
+  <text x="640" y="437" text-anchor="middle" fill="#bf8700" font-size="10" font-weight="600">TextProjector</text>
+  <text x="640" y="452" text-anchor="middle" fill="#656d76" font-size="8">Linear(384&#8594;128) + ResidualMLP + LN</text>
+
+  <rect x="740" y="420" width="260" height="42" rx="6" fill="#e0f2fe" stroke="#bf8700" stroke-dasharray="3"/>
+  <text x="870" y="437" text-anchor="middle" fill="#bf8700" font-size="10" font-weight="600">SupConLoss</text>
+  <text x="870" y="452" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="svg_supcon_desc"></text>
+
+  <line x1="715" y1="441" x2="738" y2="441" stroke="#bf8700" stroke-width="1.5" marker-end="url(#ah-o)"/>
+
+  <rect x="40" y="395" width="490" height="165" rx="10" fill="none" stroke="#8250df" stroke-width="1.5"/>
+  <text x="55" y="412" fill="#8250df" font-size="10" font-weight="700" data-i18n-svg="svg_phaseB"></text>
+
+  <rect x="55" y="420" width="150" height="42" rx="6" fill="#ede9fe" stroke="#8250df"/>
+  <text x="130" y="437" text-anchor="middle" fill="#8250df" font-size="10" font-weight="600" data-i18n-svg="svg_align_enc"></text>
+  <text x="130" y="452" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="svg_init_s1"></text>
+
+  <rect x="225" y="420" width="150" height="42" rx="6" fill="#ede9fe" stroke="#8250df"/>
+  <text x="300" y="437" text-anchor="middle" fill="#8250df" font-size="10" font-weight="600">AlignmentProjector</text>
+  <text x="300" y="452" text-anchor="middle" fill="#656d76" font-size="8">Linear(256&#8594;128) + ResidualMLP + LN</text>
+
+  <line x1="205" y1="441" x2="223" y2="441" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-p)"/>
+
+  <rect x="395" y="420" width="120" height="42" rx="6" fill="#fef3c7" stroke="#bf8700" stroke-dasharray="4"/>
+  <text x="455" y="437" text-anchor="middle" fill="#bf8700" font-size="10">TextProjector</text>
+  <text x="455" y="452" text-anchor="middle" fill="#cf222e" font-size="8" font-weight="700" data-i18n-svg="svg_detached"></text>
+
+  <line x1="375" y1="441" x2="393" y2="441" stroke="#8250df" stroke-width="1" stroke-dasharray="3"/>
+
+  <rect x="100" y="488" width="370" height="55" rx="6" fill="#e0f2fe" stroke="#8250df" stroke-dasharray="3"/>
+  <text x="285" y="505" text-anchor="middle" fill="#8250df" font-size="10" font-weight="600" data-i18n-svg="svg_clip_title"></text>
+  <text x="285" y="520" text-anchor="middle" fill="#656d76" font-size="8">logits = &#964;_scale &#183; eeg_proj @ text_proj.T | CE both dir</text>
+  <text x="285" y="533" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="svg_clip_opt"></text>
+
+  <line x1="845" y1="82" x2="845" y2="390" stroke="#bf8700" stroke-width="1" stroke-dasharray="4"/>
+  <line x1="845" y1="390" x2="640" y2="418" stroke="#bf8700" stroke-width="1.5" marker-end="url(#ah-o)"/>
+  <line x1="845" y1="390" x2="455" y2="418" stroke="#bf8700" stroke-width="1" stroke-dasharray="3" marker-end="url(#ah-o)"/>
+
+  <line x1="120" y1="82" x2="120" y2="130" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+  <line x1="100" y1="82" x2="100" y2="340" stroke="#656d76" stroke-width="1" stroke-dasharray="3"/>
+  <line x1="100" y1="340" x2="100" y2="395" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-p)"/>
+
+  <rect x="20" y="610" width="720" height="190" rx="12" fill="none" stroke="#1a7f37" stroke-width="2" stroke-dasharray="6"/>
+  <text x="36" y="628" fill="#1a7f37" font-size="11" font-weight="700" data-i18n-svg="svg_s3_title"></text>
+
+  <rect x="40" y="645" width="130" height="42" rx="6" fill="#dbeafe" stroke="#0969da"/>
+  <text x="105" y="662" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600">Cross-Encoder</text>
+  <text x="105" y="676" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">&#8594; (B, 256)</text>
+
+  <rect x="190" y="645" width="130" height="42" rx="6" fill="#ede9fe" stroke="#8250df"/>
+  <text x="255" y="662" text-anchor="middle" fill="#8250df" font-size="10" font-weight="600">Align-Encoder</text>
+  <text x="255" y="676" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">&#8594; (B, 256)</text>
+
+  <rect x="340" y="645" width="60" height="42" rx="6" fill="#f1f5f9" stroke="#1a7f37"/>
+  <text x="370" y="670" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="700">cat</text>
+
+  <line x1="170" y1="666" x2="188" y2="666" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+  <line x1="320" y1="666" x2="338" y2="666" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+  <rect x="420" y="640" width="150" height="52" rx="6" fill="#dcfce7" stroke="#1a7f37"/>
+  <text x="495" y="658" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="600" data-i18n-svg="svg_fusion"></text>
+  <text x="495" y="672" text-anchor="middle" fill="#656d76" font-size="8">Linear(512&#8594;256) &#8594; ReLU &#8594; Drop(0.3)</text>
+  <text x="495" y="684" text-anchor="middle" fill="#656d76" font-size="8">&#8594; Linear(256&#8594;256) &#8594; ReLU &#8594; Drop(0.3)</text>
+
+  <rect x="590" y="645" width="130" height="42" rx="6" fill="#dcfce7" stroke="#1a7f37"/>
+  <text x="655" y="662" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="600" data-i18n-svg="svg_classifier"></text>
+  <text x="655" y="676" text-anchor="middle" fill="#656d76" font-size="8">Linear(256 &#8594; n_classes)</text>
+
+  <line x1="400" y1="666" x2="418" y2="666" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+  <line x1="570" y1="666" x2="588" y2="666" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+  <rect x="100" y="720" width="550" height="55" rx="6" fill="#e0f2fe" stroke="#1a7f37" stroke-dasharray="3"/>
+  <text x="375" y="740" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="600">CrossEntropy Loss (label smoothing = 0.05)</text>
+  <text x="375" y="755" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="svg_s3_opt"></text>
+  <text x="375" y="768" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="svg_s3_final"></text>
+
+  <line x1="80" y1="82" x2="80" y2="595" stroke="#656d76" stroke-width="1" stroke-dasharray="3"/>
+  <line x1="80" y1="595" x2="80" y2="610" stroke="#1a7f37" stroke-width="1.5"/>
+  <line x1="80" y1="640" x2="105" y2="643" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+  <line x1="80" y1="640" x2="255" y2="643" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+  <line x1="130" y1="330" x2="130" y2="360" stroke="#656d76" stroke-width="1" stroke-dasharray="4"/>
+  <text x="205" y="348" fill="#656d76" font-size="8" font-style="italic">init_align_from_cross()</text>
+</svg>
+</div>
+</div>
+
+<!-- ===== EEG ENCODER ===== -->
+<div class="panel" id="panel-encoder">
+<div class="arch-container">
+
+  <svg viewBox="0 0 960 340" xmlns="http://www.w3.org/2000/svg" style="max-height:340px;margin-bottom:16px">
+    <text x="480" y="22" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="700" data-i18n-svg="enc_svg_title"></text>
+    <text x="480" y="40" text-anchor="middle" fill="#656d76" font-size="10" data-i18n-svg="enc_svg_sub"></text>
+
+    <rect x="10" y="70" width="100" height="70" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-width="1.5"/>
+    <text x="60" y="92" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600" data-i18n-svg="enc_svg_in"></text>
+    <text x="60" y="108" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(B,1,23,512)</text>
+    <text x="60" y="122" text-anchor="middle" fill="#656d76" font-size="7">2s @ 256Hz</text>
+    <line x1="110" y1="105" x2="138" y2="105" stroke="#656d76" stroke-width="1.5" marker-end="url(#ah-d)"/>
+
+    <rect x="140" y="58" width="135" height="96" rx="8" fill="#fef3c7" stroke="#bf8700" stroke-width="1.5"/>
+    <text x="207" y="75" text-anchor="middle" fill="#bf8700" font-size="9" font-weight="700">ChannelAttention</text>
+    <line x1="148" y1="80" x2="267" y2="80" stroke="#bf8700" stroke-width="0.5" opacity="0.3"/>
+    <text x="207" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">Squeeze: mean(T)→(B,C)</text>
+    <text x="207" y="107" text-anchor="middle" fill="#656d76" font-size="7.5">FC: C→C/r→C, Sigmoid</text>
+    <text x="207" y="120" text-anchor="middle" fill="#656d76" font-size="7.5">Excite: x &#215; weights</text>
+    <text x="207" y="136" text-anchor="middle" fill="#bf3989" font-size="7.5" font-family="monospace">→(B,1,23,512)</text>
+    <text x="207" y="148" text-anchor="middle" fill="#656d76" font-size="6.5" font-style="italic">r=4, SE-Net style</text>
+    <line x1="275" y1="105" x2="303" y2="105" stroke="#bf8700" stroke-width="1.5" marker-end="url(#ah-b)"/>
+
+    <rect x="305" y="58" width="150" height="96" rx="8" fill="#dbeafe" stroke="#0969da" stroke-width="1.5"/>
+    <text x="380" y="75" text-anchor="middle" fill="#0969da" font-size="9" font-weight="700" data-i18n-svg="enc_svg_temp"></text>
+    <line x1="313" y1="80" x2="447" y2="80" stroke="#0969da" stroke-width="0.5" opacity="0.3"/>
+    <text x="380" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">Conv2d(1→40, k=(1,25))</text>
+    <text x="380" y="107" text-anchor="middle" fill="#656d76" font-size="7.5">BatchNorm2d + ELU</text>
+    <text x="380" y="120" text-anchor="middle" fill="#656d76" font-size="7.5">AvgPool(1,8) stride=(1,4)</text>
+    <text x="380" y="136" text-anchor="middle" fill="#bf3989" font-size="7.5" font-family="monospace">→(B,40,23,121)</text>
+    <text x="380" y="148" text-anchor="middle" fill="#656d76" font-size="6.5">T'=(512-25+1-8)/4+1=121</text>
+    <line x1="455" y1="105" x2="483" y2="105" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-p)"/>
+
+    <rect x="485" y="58" width="150" height="96" rx="8" fill="#ede9fe" stroke="#8250df" stroke-width="1.5"/>
+    <text x="560" y="75" text-anchor="middle" fill="#8250df" font-size="9" font-weight="700" data-i18n-svg="enc_svg_spat"></text>
+    <line x1="493" y1="80" x2="627" y2="80" stroke="#8250df" stroke-width="0.5" opacity="0.3"/>
+    <text x="560" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">Conv2d(40→40, k=(23,1))</text>
+    <text x="560" y="107" text-anchor="middle" fill="#656d76" font-size="7.5">BatchNorm2d + ELU</text>
+    <text x="560" y="120" text-anchor="middle" fill="#656d76" font-size="7.5">Dropout(0.5)</text>
+    <text x="560" y="136" text-anchor="middle" fill="#bf3989" font-size="7.5" font-family="monospace">→(B,40,1,121)</text>
+    <text x="560" y="148" text-anchor="middle" fill="#656d76" font-size="6.5" data-i18n-svg="enc_svg_spat_n"></text>
+    <line x1="635" y1="105" x2="663" y2="105" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+    <rect x="665" y="58" width="140" height="96" rx="8" fill="#dcfce7" stroke="#1a7f37" stroke-width="1.5"/>
+    <text x="735" y="75" text-anchor="middle" fill="#1a7f37" font-size="9" font-weight="700" data-i18n-svg="enc_svg_pool"></text>
+    <line x1="673" y1="80" x2="797" y2="80" stroke="#1a7f37" stroke-width="0.5" opacity="0.3"/>
+    <text x="735" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">AdaptiveAvgPool(1,16)</text>
+    <text x="735" y="107" text-anchor="middle" fill="#bf3989" font-size="7.5" font-family="monospace">→(B,40,1,16)</text>
+    <text x="735" y="120" text-anchor="middle" fill="#656d76" font-size="7.5">Flatten → 640</text>
+    <text x="735" y="133" text-anchor="middle" fill="#656d76" font-size="7.5">Linear(640→256)</text>
+    <text x="735" y="148" text-anchor="middle" fill="#bf3989" font-size="7.5" font-family="monospace">→(B, 256)</text>
+    <line x1="805" y1="105" x2="833" y2="105" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+    <rect x="835" y="74" width="115" height="62" rx="8" fill="#dcfce7" stroke="#1a7f37" stroke-width="2"/>
+    <text x="892" y="97" text-anchor="middle" fill="#1a7f37" font-size="11" font-weight="700">embed_dim</text>
+    <text x="892" y="115" text-anchor="middle" fill="#bf3989" font-size="10" font-family="monospace">(B, 256)</text>
+    <text x="892" y="128" text-anchor="middle" fill="#656d76" font-size="7" data-i18n-svg="enc_svg_embed_n"></text>
+
+    <rect x="130" y="185" width="710" height="100" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
+    <text x="485" y="207" text-anchor="middle" fill="#1f2328" font-size="11" font-weight="600" data-i18n-svg="enc_svg_dual"></text>
+    <rect x="148" y="217" width="310" height="26" rx="5" fill="#dbeafe" stroke="#0969da"/>
+    <text x="303" y="235" text-anchor="middle" fill="#0969da" font-size="9" font-weight="600" data-i18n-svg="enc_svg_b1"></text>
+    <rect x="512" y="217" width="310" height="26" rx="5" fill="#ede9fe" stroke="#8250df"/>
+    <text x="667" y="235" text-anchor="middle" fill="#8250df" font-size="9" font-weight="600" data-i18n-svg="enc_svg_b2"></text>
+    <text x="485" y="270" text-anchor="middle" fill="#656d76" font-size="9" font-style="italic" data-i18n-svg="enc_svg_init"></text>
+  </svg>
+
+  <div class="card">
+    <h3 data-i18n="enc_title"></h3>
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:16px" data-i18n="enc_desc"></p>
+    <ul class="layer-list">
+      <li><span data-i18n="enc_input"></span> <span class="shape">(B, 1, C, T) = (B, 1, 23, 512)</span></li>
+    </ul>
+    <div class="flow-arrow">&#9660;</div>
+    <ul class="layer-list">
+      <li style="border-color:var(--orange)"><span><strong data-i18n="enc_chattn"></strong></span> <span class="shape">(B, 1, C, T) &#8594; (B, 1, C, T)</span></li>
+      <li style="border-color:var(--orange)"><span>&nbsp;&nbsp;&#9500; Squeeze: mean over T &#8594; <code>(B, C)</code></span><span></span></li>
+      <li style="border-color:var(--orange)"><span>&nbsp;&nbsp;&#9500; FC: Linear(C, C//r) &#8594; ReLU &#8594; Linear(C//r, C) &#8594; Sigmoid</span><span></span></li>
+      <li style="border-color:var(--orange)"><span>&nbsp;&nbsp;&#9492; Excite: x * weights.unsqueeze(1).unsqueeze(-1)</span><span></span></li>
+    </ul>
+    <div class="flow-arrow">&#9660;</div>
+    <ul class="layer-list">
+      <li style="border-color:var(--s1)"><span><strong data-i18n="enc_temporal"></strong></span><span></span></li>
+      <li style="border-color:var(--s1)"><span>&nbsp;&nbsp;&#9500; Conv2d(1 &#8594; 40, kernel=(1,25), padding=0)</span> <span class="shape">(B, 40, 23, 488)</span></li>
+      <li style="border-color:var(--s1)"><span>&nbsp;&nbsp;&#9500; BatchNorm2d(40) + ELU(inplace)</span><span></span></li>
+      <li style="border-color:var(--s1)"><span>&nbsp;&nbsp;&#9492; AvgPool2d((1,8), stride=(1,4))</span> <span class="shape">(B, 40, 23, 121)</span></li>
+    </ul>
+    <div class="flow-arrow">&#9660;</div>
+    <ul class="layer-list">
+      <li style="border-color:var(--s2b)"><span><strong data-i18n="enc_spatial"></strong></span><span></span></li>
+      <li style="border-color:var(--s2b)"><span>&nbsp;&nbsp;&#9500; Conv2d(40 &#8594; 40, kernel=(C,1) = (23,1))</span> <span class="shape">(B, 40, 1, 121)</span></li>
+      <li style="border-color:var(--s2b)"><span>&nbsp;&nbsp;&#9500; BatchNorm2d(40) + ELU(inplace)</span><span></span></li>
+      <li style="border-color:var(--s2b)"><span>&nbsp;&nbsp;&#9492; Dropout(0.5)</span><span></span></li>
+    </ul>
+    <div class="flow-arrow">&#9660;</div>
+    <ul class="layer-list">
+      <li style="border-color:var(--s3)"><span><strong>AdaptiveAvgPool2d</strong>((1, 16))</span> <span class="shape">(B, 40, 1, 16)</span></li>
+    </ul>
+    <div class="flow-arrow">&#9660;</div>
+    <ul class="layer-list">
+      <li style="border-color:var(--s3)"><span><strong>Flatten</strong> + <strong>Linear</strong>(640 &#8594; 256)</span> <span class="shape">(B, 256) = embed_dim</span></li>
+    </ul>
+  </div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3 data-i18n="enc_design_h"></h3>
+      <div class="highlight hl-s1" style="font-size:0.85rem" data-i18n="enc_design_temporal"></div>
+      <div class="highlight hl-s2b" style="font-size:0.85rem;margin-top:8px" data-i18n="enc_design_spatial"></div>
+      <div class="highlight hl-s3" style="font-size:0.85rem;margin-top:8px" data-i18n="enc_design_pool"></div>
+    </div>
+    <div class="card">
+      <h3 data-i18n="enc_code_h"></h3>
+      <table>
+        <tr><th data-i18n="th_module"></th><th data-i18n="enc_th_class"></th><th data-i18n="enc_th_file"></th></tr>
+        <tr><td>ChannelAttention</td><td><code>ChannelAttention</code></td><td><code>models/encoder.py</code></td></tr>
+        <tr><td>temporal_block</td><td><code>nn.Sequential</code></td><td><code>models/encoder.py:88</code></td></tr>
+        <tr><td>spatial_block</td><td><code>nn.Sequential</code></td><td><code>models/encoder.py:95</code></td></tr>
+        <tr><td>adaptive_pool</td><td><code>AdaptiveAvgPool2d</code></td><td><code>models/encoder.py:102</code></td></tr>
+        <tr><td>projection</td><td><code>Flatten + Linear</code></td><td><code>models/encoder.py:105</code></td></tr>
+      </table>
+      <p style="color:var(--dim);font-size:0.82rem;margin-top:8px" data-i18n="enc_code_note"></p>
+    </div>
+  </div>
+</div>
+</div>
+
+<!-- ===== STAGE 1 ===== -->
+<div class="panel" id="panel-stage1">
+<div class="arch-container">
+
+  <svg viewBox="0 0 880 440" xmlns="http://www.w3.org/2000/svg" style="max-height:440px;margin-bottom:16px">
+    <text x="440" y="22" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="700" data-i18n-svg="s1_svg_title"></text>
+
+    <rect x="40" y="50" width="160" height="50" rx="8" fill="#dbeafe" stroke="#0969da"/>
+    <text x="120" y="72" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600" data-i18n-svg="s1_svg_eegA"></text>
+    <text x="120" y="88" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(K, 1, 23, 512)</text>
+
+    <rect x="280" y="50" width="160" height="50" rx="8" fill="#dbeafe" stroke="#0969da"/>
+    <text x="360" y="72" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600" data-i18n-svg="s1_svg_eegB"></text>
+    <text x="360" y="88" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(K, 1, 23, 512)</text>
+
+    <text x="240" y="72" text-anchor="middle" fill="#656d76" font-size="9" font-style="italic" data-i18n-svg="s1_svg_same_cond"></text>
+
+    <line x1="120" y1="100" x2="120" y2="128" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="360" y1="100" x2="360" y2="128" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+
+    <rect x="60" y="130" width="300" height="45" rx="8" fill="#dbeafe" stroke="#0969da" stroke-width="2"/>
+    <text x="210" y="150" text-anchor="middle" fill="#0969da" font-size="10" font-weight="700">cross_encoder (EEGEncoder)</text>
+    <text x="210" y="165" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s1_svg_shared"></text>
+
+    <line x1="120" y1="175" x2="120" y2="203" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="360" y1="175" x2="360" y2="203" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+
+    <rect x="55" y="205" width="130" height="36" rx="6" fill="#f1f5f9" stroke="#0969da"/>
+    <text x="120" y="222" text-anchor="middle" fill="#0969da" font-size="9">z_a</text>
+    <text x="120" y="234" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(K, 256)</text>
+    <rect x="295" y="205" width="130" height="36" rx="6" fill="#f1f5f9" stroke="#0969da"/>
+    <text x="360" y="222" text-anchor="middle" fill="#0969da" font-size="9">z_b</text>
+    <text x="360" y="234" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(K, 256)</text>
+
+    <line x1="120" y1="241" x2="120" y2="263" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="360" y1="241" x2="360" y2="263" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+
+    <rect x="40" y="265" width="400" height="40" rx="8" fill="#dbeafe" stroke="#0969da"/>
+    <text x="240" y="283" text-anchor="middle" fill="#0969da" font-size="10" font-weight="700">cross_projector (ContrastiveProjector)</text>
+    <text x="240" y="297" text-anchor="middle" fill="#656d76" font-size="8">Linear(256→256) → ReLU → Linear(256→128)</text>
+
+    <line x1="240" y1="305" x2="240" y2="333" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+
+    <rect x="110" y="335" width="260" height="36" rx="6" fill="#f1f5f9" stroke="#0969da"/>
+    <text x="240" y="349" text-anchor="middle" fill="#0969da" font-size="9" font-weight="600">p_a, p_b → cat → features</text>
+    <text x="240" y="363" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(2K, 128)</text>
+
+    <line x1="370" y1="353" x2="498" y2="353" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+
+    <rect x="500" y="50" width="360" height="230" rx="10" fill="#e0f2fe" stroke="#0969da" stroke-dasharray="4"/>
+    <text x="680" y="72" text-anchor="middle" fill="#0969da" font-size="11" font-weight="700">InfoNCE Loss (NT-Xent)</text>
+
+    <rect x="530" y="85" width="120" height="120" rx="4" fill="none" stroke="#0969da" stroke-width="0.8"/>
+    <text x="590" y="100" text-anchor="middle" fill="#0969da" font-size="8" font-weight="600" data-i18n-svg="s1_svg_sim"></text>
+    <text x="590" y="115" text-anchor="middle" fill="#bf3989" font-size="7" font-family="monospace">(2K &#215; 2K)</text>
+    <line x1="540" y1="125" x2="640" y2="125" stroke="#0969da" stroke-width="0.5" opacity="0.3"/>
+    <rect x="540" y="130" width="15" height="15" rx="1" fill="#0969da" opacity="0.3"/>
+    <rect x="555" y="130" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="570" y="130" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="585" y="130" width="15" height="15" rx="1" fill="#0969da" opacity="0.6"/>
+    <rect x="540" y="145" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="555" y="145" width="15" height="15" rx="1" fill="#0969da" opacity="0.3"/>
+    <rect x="570" y="145" width="15" height="15" rx="1" fill="#0969da" opacity="0.6"/>
+    <rect x="585" y="145" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="540" y="160" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="555" y="160" width="15" height="15" rx="1" fill="#0969da" opacity="0.6"/>
+    <rect x="570" y="160" width="15" height="15" rx="1" fill="#0969da" opacity="0.3"/>
+    <rect x="585" y="160" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="540" y="175" width="15" height="15" rx="1" fill="#0969da" opacity="0.6"/>
+    <rect x="555" y="175" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="570" y="175" width="15" height="15" rx="1" fill="#f1f5f9" stroke="#d0d7de" stroke-width="0.5"/>
+    <rect x="585" y="175" width="15" height="15" rx="1" fill="#0969da" opacity="0.3"/>
+    <text x="620" y="142" fill="#1a7f37" font-size="7" font-weight="600" data-i18n-svg="s1_svg_pos"></text>
+    <text x="620" y="172" fill="#cf222e" font-size="7" font-weight="600" data-i18n-svg="s1_svg_neg"></text>
+
+    <rect x="670" y="90" width="170" height="105" rx="6" fill="#f1f5f9" stroke="#d0d7de"/>
+    <text x="755" y="108" text-anchor="middle" fill="#1f2328" font-size="8" font-weight="600" data-i18n-svg="s1_svg_comp"></text>
+    <text x="755" y="123" text-anchor="middle" fill="#656d76" font-size="7">sim = feat @ feat.T / τ</text>
+    <text x="755" y="137" text-anchor="middle" fill="#656d76" font-size="7">sim.fill_diagonal_(-1e9)</text>
+    <text x="755" y="151" text-anchor="middle" fill="#656d76" font-size="7">labels = [K..2K, 0..K]</text>
+    <text x="755" y="165" text-anchor="middle" fill="#656d76" font-size="7">loss = CE(sim, labels)</text>
+    <text x="755" y="183" text-anchor="middle" fill="#bf3989" font-size="7" font-family="monospace">τ = 0.07</text>
+
+    <text x="680" y="220" text-anchor="middle" fill="#656d76" font-size="8" font-style="italic" data-i18n-svg="s1_svg_goal"></text>
+    <text x="680" y="236" text-anchor="middle" fill="#656d76" font-size="8" font-style="italic" data-i18n-svg="s1_svg_goal2"></text>
+    <text x="680" y="260" text-anchor="middle" fill="#0969da" font-size="8" font-weight="600" data-i18n-svg="s1_svg_opt"></text>
+
+    <rect x="500" y="300" width="360" height="80" rx="8" fill="#f1f5f9" stroke="#d0d7de"/>
+    <text x="680" y="318" text-anchor="middle" fill="#1f2328" font-size="9" font-weight="600" data-i18n-svg="s1_svg_loop"></text>
+    <text x="680" y="334" text-anchor="middle" fill="#656d76" font-size="7.5" data-i18n-svg="s1_svg_loop1"></text>
+    <text x="680" y="348" text-anchor="middle" fill="#656d76" font-size="7.5" data-i18n-svg="s1_svg_loop2"></text>
+    <text x="680" y="362" text-anchor="middle" fill="#656d76" font-size="7.5" data-i18n-svg="s1_svg_loop3"></text>
+    <text x="680" y="376" text-anchor="middle" fill="#656d76" font-size="7.5" data-i18n-svg="s1_svg_loop4"></text>
+
+    <text x="240" y="415" text-anchor="middle" fill="#0969da" font-size="9" font-weight="600" data-i18n-svg="s1_svg_grad"></text>
+    <text x="240" y="432" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s1_svg_grad2"></text>
+  </svg>
+
+  <div class="card">
+    <h3><span class="badge badge-s1">STAGE 1</span> <span data-i18n="s1_title"></span></h3>
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:12px" data-i18n="s1_desc"></p>
+    <div class="highlight hl-s1" data-i18n="s1_data"></div>
+    <h4 style="margin:16px 0 8px;" data-i18n="h_fwd"></h4>
+    <ul class="layer-list">
+      <li><span data-i18n="s1_fwd1"></span> <span class="shape">(K, 1, 23, 512) each</span></li>
+      <li style="border-color:var(--s1)"><span>cross_encoder(EEG_A) &#8594; z_a</span> <span class="shape">(K, 256)</span></li>
+      <li style="border-color:var(--s1)"><span>cross_encoder(EEG_B) &#8594; z_b</span> <span class="shape">(K, 256)</span></li>
+      <li style="border-color:var(--s1)"><span>cross_projector(z_a), cross_projector(z_b)</span> <span class="shape">(K, 128) each</span></li>
+    </ul>
+    <h4 style="margin:16px 0 8px;" data-i18n="h_loss"></h4>
+    <div class="highlight hl-s1">
+      <code>z_a = F.normalize(z_a, dim=1)</code><br>
+      <code>z_b = F.normalize(z_b, dim=1)</code><br>
+      <code>features = cat([z_a, z_b], dim=0)</code> &#8594; <span class="tensor">(2K, 128)</span><br>
+      <code>sim = features @ features.T / &#964;</code> &#8594; <span class="tensor">(2K, 2K)</span><br>
+      <code>sim.fill_diagonal_(-1e9)</code><br>
+      <code>labels = cat([arange(K,2K), arange(0,K)])</code><br>
+      <code>loss = F.cross_entropy(sim, labels)</code>
+    </div>
+    <h4 style="margin:16px 0 8px;" data-i18n="h_trainable"></h4>
+    <table>
+      <tr><th data-i18n="th_module"></th><th data-i18n="th_status"></th><th data-i18n="enc_th_class"></th></tr>
+      <tr><td><code>cross_encoder</code></td><td class="trainable" style="color:var(--s1)" data-i18n="trainable"></td><td><code>EEGEncoder</code></td></tr>
+      <tr><td><code>cross_projector</code></td><td class="trainable" style="color:var(--s1)" data-i18n="trainable"></td><td><code>ContrastiveProjector</code></td></tr>
+      <tr><td data-i18n="other_modules"></td><td class="frozen" data-i18n="frozen_unused"></td><td>—</td></tr>
+    </table>
+    <h4 style="margin:16px 0 8px;" data-i18n="h_hyper"></h4>
+    <table>
+      <tr><td data-i18n="hp_optim"></td><td>AdamW (lr=1e-3, wd=1e-2)</td></tr>
+      <tr><td data-i18n="hp_sched"></td><td>CosineAnnealingLR (T_max=100)</td></tr>
+      <tr><td data-i18n="hp_temp"></td><td>0.07</td></tr>
+      <tr><td data-i18n="hp_batch"></td><td data-i18n="s1_batch_val"></td></tr>
+      <tr><td>Grad clip</td><td>max_norm=1.0</td></tr>
+      <tr><td>Epochs</td><td>100 (+ early stopping, patience=15)</td></tr>
+      <tr><td data-i18n="hp_ckpt"></td><td data-i18n="s1_ckpt_val"></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3 data-i18n="s1_pair_h"></h3>
+    <div class="highlight hl-s1" style="font-size:0.85rem" data-i18n="s1_pair_desc"></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== STAGE 2 ===== -->
+<div class="panel" id="panel-stage2">
+<div class="arch-container">
+
+  <svg viewBox="0 0 920 480" xmlns="http://www.w3.org/2000/svg" style="max-height:480px;margin-bottom:16px">
+    <text x="460" y="22" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="700" data-i18n-svg="s2_svg_title"></text>
+    <text x="460" y="40" text-anchor="middle" fill="#656d76" font-size="10" data-i18n-svg="s2_svg_sub"></text>
+
+    <!-- ── EEG Side (Trainable) ── -->
+    <rect x="20" y="55" width="400" height="310" rx="12" fill="none" stroke="#8250df" stroke-width="2" stroke-dasharray="6"/>
+    <text x="36" y="75" fill="#8250df" font-size="11" font-weight="700" data-i18n-svg="s2_svg_eeg_side"></text>
+    <rect x="310" y="62" width="90" height="20" rx="4" fill="#8250df15" stroke="#8250df"/>
+    <text x="355" y="76" text-anchor="middle" fill="#8250df" font-size="8" font-weight="700" data-i18n-svg="s2_svg_trainable_badge"></text>
+
+    <!-- EEG Input -->
+    <rect x="120" y="92" width="200" height="44" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-width="1.5"/>
+    <text x="220" y="110" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600" data-i18n-svg="s2_svg_eegin"></text>
+    <text x="220" y="126" text-anchor="middle" fill="#bf3989" font-size="9" font-family="monospace">(B, 1, 23, 512)</text>
+
+    <line x1="220" y1="136" x2="220" y2="156" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-p)"/>
+
+    <!-- align_encoder -->
+    <rect x="80" y="158" width="280" height="56" rx="8" fill="#ede9fe" stroke="#8250df" stroke-width="1.5"/>
+    <text x="220" y="178" text-anchor="middle" fill="#8250df" font-size="11" font-weight="700">align_encoder</text>
+    <text x="220" y="194" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s2_svg_initS1"></text>
+    <text x="220" y="208" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">&#8594; (B, 256)</text>
+
+    <line x1="220" y1="214" x2="220" y2="236" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-p)"/>
+
+    <!-- AlignmentProjector -->
+    <rect x="60" y="238" width="320" height="56" rx="8" fill="#ede9fe" stroke="#8250df" stroke-width="1.5"/>
+    <text x="220" y="258" text-anchor="middle" fill="#8250df" font-size="10" font-weight="700">AlignmentProjector</text>
+    <text x="220" y="274" text-anchor="middle" fill="#656d76" font-size="8">Linear(256&#8594;128) + ResidualMLP + LayerNorm</text>
+    <text x="220" y="288" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">&#8594; eeg_proj (B, 128) L2-norm</text>
+
+    <!-- gradient flow label -->
+    <text x="220" y="320" text-anchor="middle" fill="#8250df" font-size="8" font-weight="600" data-i18n-svg="s2_svg_grad_eeg"></text>
+    <line x1="170" y1="326" x2="270" y2="326" stroke="#8250df" stroke-width="0.6" opacity="0.4"/>
+
+    <!-- arrow from eeg_proj to CLIP -->
+    <line x1="220" y1="332" x2="220" y2="370" stroke="#8250df" stroke-width="1.5"/>
+    <line x1="220" y1="370" x2="340" y2="395" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-p)"/>
+
+    <!-- ── Text Side (Frozen) ── -->
+    <rect x="500" y="55" width="400" height="310" rx="12" fill="none" stroke="#656d76" stroke-width="1.5" stroke-dasharray="6"/>
+    <text x="516" y="75" fill="#656d76" font-size="11" font-weight="700" data-i18n-svg="s2_svg_txt_side"></text>
+    <rect x="790" y="62" width="90" height="20" rx="4" fill="#656d7612" stroke="#656d76"/>
+    <text x="835" y="76" text-anchor="middle" fill="#656d76" font-size="8" font-weight="700" data-i18n-svg="s2_svg_frozen_badge"></text>
+
+    <!-- Text Descriptions -->
+    <rect x="600" y="92" width="200" height="44" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
+    <text x="700" y="110" text-anchor="middle" fill="#656d76" font-size="10" font-weight="600" data-i18n-svg="s2_svg_txt_desc"></text>
+    <text x="700" y="126" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s2_svg_txt_9cond"></text>
+
+    <line x1="700" y1="136" x2="700" y2="156" stroke="#656d76" stroke-width="1.5" marker-end="url(#ah-d)"/>
+
+    <!-- SentenceTransformer -->
+    <rect x="570" y="158" width="260" height="56" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
+    <text x="700" y="178" text-anchor="middle" fill="#656d76" font-size="10">SentenceTransformer</text>
+    <text x="700" y="194" text-anchor="middle" fill="#656d76" font-size="8" font-style="italic">(all-MiniLM-L6-v2, frozen)</text>
+    <text x="700" y="208" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">&#8594; (B, 384)</text>
+
+    <line x1="700" y1="214" x2="700" y2="236" stroke="#656d76" stroke-width="1.5" marker-end="url(#ah-d)"/>
+
+    <!-- text_emb (frozen, L2-normed) -->
+    <rect x="580" y="238" width="240" height="56" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
+    <text x="700" y="255" text-anchor="middle" fill="#656d76" font-size="10" font-weight="600">text_emb</text>
+    <text x="700" y="271" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(B, 384) L2-norm</text>
+    <text x="700" y="286" text-anchor="middle" fill="#cf222e" font-size="8" font-weight="700" data-i18n-svg="s2_svg_frozen_no_grad"></text>
+
+    <!-- no-gradient X markers -->
+    <text x="700" y="320" text-anchor="middle" fill="#656d76" font-size="8" font-weight="600" data-i18n-svg="s2_svg_no_grad_txt"></text>
+    <line x1="650" y1="326" x2="750" y2="326" stroke="#656d76" stroke-width="0.6" opacity="0.4"/>
+
+    <!-- arrow from text to CLIP -->
+    <line x1="700" y1="332" x2="700" y2="370" stroke="#656d76" stroke-width="1" stroke-dasharray="4"/>
+    <line x1="700" y1="370" x2="580" y2="395" stroke="#656d76" stroke-width="1" stroke-dasharray="4" marker-end="url(#ah-d)"/>
+
+    <!-- ── CLIP Loss (center bottom) ── -->
+    <rect x="280" y="388" width="360" height="70" rx="10" fill="#e0f2fe" stroke="#8250df" stroke-width="1.5" stroke-dasharray="3"/>
+    <text x="460" y="408" text-anchor="middle" fill="#8250df" font-size="12" font-weight="700">CLIPLoss</text>
+    <text x="460" y="424" text-anchor="middle" fill="#656d76" font-size="8">logits = &#964;_scale &#183; eeg_proj @ text_emb.T</text>
+    <text x="460" y="438" text-anchor="middle" fill="#656d76" font-size="8">loss = (CE(logits, labels) + CE(logits.T, labels)) / 2</text>
+    <text x="460" y="452" text-anchor="middle" fill="#656d76" font-size="7" data-i18n-svg="s2_svg_diag_pos"></text>
+
+    <!-- bottom summary -->
+    <text x="460" y="475" text-anchor="middle" fill="#8250df" font-size="9" font-weight="600" data-i18n-svg="s2_svg_optB"></text>
+  </svg>
+
+  <div class="card">
+    <h3><span class="badge badge-s2b">STAGE 2</span> <span data-i18n="s2_title"></span></h3>
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:12px" data-i18n="s2_desc"></p>
+  </div>
+
+  <div class="grid2">
+    <div class="card" style="border-color:var(--s2b)">
+      <h3 style="color:var(--s2b)" data-i18n="h_fwd"></h3>
+      <ul class="layer-list">
+        <li><span data-i18n="enc_input"></span> <span class="shape">(B, 1, 23, 512)</span></li>
+        <li style="border-color:var(--s2b)"><span>align_encoder(eeg) &#8594; feat</span> <span class="shape">(B, 256)</span></li>
+        <li style="border-color:var(--s2b)"><span>AlignmentProjector(feat): Linear(256&#8594;128) + ResidualMLP + LN</span> <span class="shape">(B, 128)</span></li>
+        <li style="border-color:var(--s2b)"><span>eeg_proj = F.normalize(proj, dim=1)</span> <span class="shape">(B, 128)</span></li>
+      </ul>
+      <p style="font-size:0.82rem;color:var(--dim);margin-top:8px" data-i18n="s2_txt_path_desc"></p>
+      <h3 style="margin-top:16px" data-i18n="h_loss"></h3>
+      <div class="highlight hl-s2b" style="font-size:0.85rem">
+        <code>logits = &#964; &#183; eeg_proj @ text_emb.T</code> &#8594; <span class="tensor">(B, B)</span><br>
+        <code>labels = arange(B)</code><br>
+        <code>loss = (CE(logits, labels) + CE(logits.T, labels)) / 2</code><br>
+        <span data-i18n="s2_loss_note"></span>
+      </div>
+    </div>
+    <div class="card" style="border-color:var(--s2b)">
+      <h3 style="color:var(--s2b)" data-i18n="h_trainable"></h3>
+      <table>
+        <tr><th data-i18n="th_module"></th><th data-i18n="th_status"></th><th data-i18n="enc_th_class"></th></tr>
+        <tr><td><code>align_encoder</code></td><td class="trainable" style="color:var(--s2b)" data-i18n="trainable"></td><td><code>EEGEncoder</code></td></tr>
+        <tr><td><code>align_projector</code></td><td class="trainable" style="color:var(--s2b)" data-i18n="trainable"></td><td><code>AlignmentProjector</code></td></tr>
+        <tr><td><code>logit_scale</code></td><td class="trainable" style="color:var(--s2b)" data-i18n="trainable"></td><td><code>nn.Parameter</code></td></tr>
+        <tr><td>SentenceTransformer</td><td class="frozen" data-i18n="frozen_unused"></td><td><code>frozen</code></td></tr>
+        <tr><td>cross_encoder</td><td class="frozen" data-i18n="frozen_unused"></td><td>—</td></tr>
+      </table>
+      <h3 style="margin-top:16px" data-i18n="h_hyper"></h3>
+      <table>
+        <tr><td data-i18n="hp_optim"></td><td>AdamW (lr=5e-4, wd=1e-2)</td></tr>
+        <tr><td data-i18n="hp_sched"></td><td>CosineAnnealingLR (T_max=80)</td></tr>
+        <tr><td data-i18n="hp_params"></td><td>align_encoder + align_projector + logit_scale</td></tr>
+        <tr><td>Grad clip</td><td>max_norm=1.0</td></tr>
+        <tr><td>Epochs</td><td>80 (+ early stopping, patience=15)</td></tr>
+        <tr><td data-i18n="hp_ckpt"></td><td data-i18n="s2_ckpt_val"></td></tr>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3 data-i18n="s2_design_h"></h3>
+    <div class="highlight hl-s2b" style="font-size:0.85rem" data-i18n="s2_design_desc"></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== STAGE 3 ===== -->
+<div class="panel" id="panel-stage3">
+<div class="arch-container">
+
+  <svg viewBox="0 0 860 460" xmlns="http://www.w3.org/2000/svg" style="max-height:460px;margin-bottom:16px">
+    <text x="430" y="22" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="700" data-i18n-svg="s3_svg_title"></text>
+    <text x="430" y="40" text-anchor="middle" fill="#656d76" font-size="10" data-i18n-svg="s3_svg_sub"></text>
+
+    <!-- Input -->
+    <rect x="330" y="55" width="200" height="40" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-width="1.5"/>
+    <text x="430" y="72" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600" data-i18n-svg="s3_svg_in"></text>
+    <text x="430" y="86" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(B, 1, 23, 512)</text>
+
+    <!-- Split arrows -->
+    <line x1="380" y1="95" x2="200" y2="125" stroke="#656d76" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="480" y1="95" x2="660" y2="125" stroke="#656d76" stroke-width="1.5" marker-end="url(#ah-p)"/>
+
+    <!-- Branch 1: cross_encoder -->
+    <rect x="100" y="127" width="200" height="65" rx="8" fill="#dbeafe" stroke="#0969da" stroke-width="1.5"/>
+    <text x="200" y="147" text-anchor="middle" fill="#0969da" font-size="10" font-weight="700">cross_encoder</text>
+    <text x="200" y="162" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_b1_src"></text>
+    <text x="200" y="178" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">→ cross_feat (B, 256)</text>
+    <text x="200" y="200" text-anchor="middle" fill="#656d76" font-size="7" font-style="italic" data-i18n-svg="s3_svg_b1_note"></text>
+
+    <!-- Branch 2: align_encoder -->
+    <rect x="560" y="127" width="200" height="65" rx="8" fill="#ede9fe" stroke="#8250df" stroke-width="1.5"/>
+    <text x="660" y="147" text-anchor="middle" fill="#8250df" font-size="10" font-weight="700">align_encoder</text>
+    <text x="660" y="162" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_b2_src"></text>
+    <text x="660" y="178" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">→ align_feat (B, 256)</text>
+    <text x="660" y="200" text-anchor="middle" fill="#656d76" font-size="7" font-style="italic" data-i18n-svg="s3_svg_b2_note"></text>
+
+    <!-- Merge arrows -->
+    <line x1="250" y1="192" x2="390" y2="220" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+    <line x1="610" y1="192" x2="470" y2="220" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+    <!-- Cat -->
+    <rect x="390" y="215" width="80" height="30" rx="6" fill="#f1f5f9" stroke="#1a7f37" stroke-width="1.5"/>
+    <text x="430" y="235" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="700">cat</text>
+    <text x="430" y="253" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">(B, 512)</text>
+    <line x1="430" y1="255" x2="430" y2="273" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+    <!-- Fusion MLP -->
+    <rect x="300" y="275" width="260" height="70" rx="8" fill="#dcfce7" stroke="#1a7f37" stroke-width="1.5"/>
+    <text x="430" y="293" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="700" data-i18n-svg="s3_svg_fusion"></text>
+    <text x="430" y="308" text-anchor="middle" fill="#656d76" font-size="8">Linear(512→256) → ReLU → Dropout(0.3)</text>
+    <text x="430" y="321" text-anchor="middle" fill="#656d76" font-size="8">Linear(256→256) → ReLU → Dropout(0.3)</text>
+    <text x="430" y="337" text-anchor="middle" fill="#bf3989" font-size="8" font-family="monospace">→ (B, 256)</text>
+    <line x1="430" y1="345" x2="430" y2="363" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+    <!-- Classifier -->
+    <rect x="340" y="365" width="180" height="35" rx="6" fill="#dcfce7" stroke="#1a7f37" stroke-width="2"/>
+    <text x="430" y="380" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="700" data-i18n-svg="s3_svg_cls"></text>
+    <text x="430" y="393" text-anchor="middle" fill="#656d76" font-size="8">Linear(256 → n_classes)</text>
+    <text x="430" y="410" text-anchor="middle" fill="#bf3989" font-size="9" font-family="monospace">→ logits (B, 2)</text>
+
+    <line x1="430" y1="412" x2="430" y2="430" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+    <!-- Loss -->
+    <rect x="300" y="432" width="260" height="22" rx="4" fill="#e0f2fe" stroke="#1a7f37" stroke-dasharray="3"/>
+    <text x="430" y="448" text-anchor="middle" fill="#1a7f37" font-size="9" font-weight="600">CrossEntropy (label_smoothing=0.05)</text>
+
+    <!-- Side panel: inference note -->
+    <rect x="10" y="275" width="260" height="100" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
+    <text x="140" y="295" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600" data-i18n-svg="s3_svg_inf_title"></text>
+    <text x="140" y="312" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_inf1"></text>
+    <text x="140" y="327" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_inf2"></text>
+    <text x="140" y="342" text-anchor="middle" fill="#1a7f37" font-size="8" font-weight="600" data-i18n-svg="s3_svg_inf3"></text>
+    <text x="140" y="360" text-anchor="middle" fill="#656d76" font-size="7" data-i18n-svg="s3_svg_inf4"></text>
+
+    <!-- Side panel: metrics -->
+    <rect x="590" y="275" width="260" height="100" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
+    <text x="720" y="295" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600" data-i18n-svg="s3_svg_eval_title"></text>
+    <text x="720" y="312" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_eval1"></text>
+    <text x="720" y="327" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_eval2"></text>
+    <text x="720" y="342" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_eval3"></text>
+    <text x="720" y="360" text-anchor="middle" fill="#656d76" font-size="8" data-i18n-svg="s3_svg_eval4"></text>
+  </svg>
+
+  <div class="card">
+    <h3><span class="badge badge-s3">STAGE 3</span> <span data-i18n="s3_title"></span></h3>
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:12px" data-i18n="s3_desc"></p>
+    <h4 style="margin:12px 0 8px;" data-i18n="h_fwd"></h4>
+    <ul class="layer-list">
+      <li><span data-i18n="enc_input"></span> <span class="shape">(B, 1, 23, 512)</span></li>
+      <li style="border-color:var(--s1)"><span>cross_encoder(eeg) &#8594; cross_feat</span> <span class="shape">(B, 256)</span></li>
+      <li style="border-color:var(--s2b)"><span>align_encoder(eeg) &#8594; align_feat</span> <span class="shape">(B, 256)</span></li>
+      <li style="border-color:var(--s3)"><span>cat([cross_feat, align_feat], dim=-1)</span> <span class="shape">(B, 512)</span></li>
+      <li style="border-color:var(--s3)"><span>Fusion: Linear(512&#8594;256) &#8594; ReLU(inplace) &#8594; Dropout(0.3)</span> <span class="shape">(B, 256)</span></li>
+      <li style="border-color:var(--s3)"><span>Fusion: Linear(256&#8594;256) &#8594; ReLU(inplace) &#8594; Dropout(0.3)</span> <span class="shape">(B, 256)</span></li>
+      <li style="border-color:var(--s3)"><span>Classifier: Linear(256 &#8594; n_classes)</span> <span class="shape">(B, 2)</span></li>
+    </ul>
+    <h4 style="margin:16px 0 8px;" data-i18n="h_loss_opt"></h4>
+    <table>
+      <tr><td data-i18n="hp_loss"></td><td>CrossEntropy (label_smoothing=0.05) — <code>CogLoadLoss</code></td></tr>
+      <tr><td data-i18n="hp_optim"></td><td>AdamW (lr=1e-4, wd=1e-2)</td></tr>
+      <tr><td data-i18n="hp_sched"></td><td>CosineAnnealingLR (T_max=60)</td></tr>
+      <tr><td>Grad clip</td><td>max_norm=1.0</td></tr>
+      <tr><td>Epochs</td><td>60 (+ early stopping, patience=15, mode=max)</td></tr>
+      <tr><td data-i18n="s3_freeze"></td><td data-i18n="s3_freeze_val"></td></tr>
+      <tr><td data-i18n="hp_ckpt"></td><td data-i18n="s3_ckpt_val"></td></tr>
+      <tr><td data-i18n="s3_eval"></td><td data-i18n="s3_eval_val"></td></tr>
+    </table>
+    <h4 style="margin:16px 0 8px;" data-i18n="s3_rationale_h"></h4>
+    <div class="highlight hl-s3" style="font-size:0.85rem" data-i18n="s3_rationale"></div>
+  </div>
+  <div class="card">
+    <h3 data-i18n="s3_inference_h"></h3>
+    <div class="highlight hl-s3" style="font-size:0.85rem" data-i18n="s3_inference_desc"></div>
+  </div>
+</div>
+</div>
+
+<!-- ===== TENSOR DIMS ===== -->
+<div class="panel" id="panel-dims">
+<div class="arch-container">
+  <div class="card">
+    <h3 data-i18n="dim_title"></h3>
+    <table>
+      <tr><th data-i18n="th_location"></th><th data-i18n="th_shape"></th><th data-i18n="th_notes"></th></tr>
+      <tr><td data-i18n="dim_raw"></td><td class="tensor">(23, ~15360)</td><td data-i18n="dim_raw_n"></td></tr>
+      <tr><td data-i18n="dim_epoch"></td><td class="tensor">(~30, 23, 512)</td><td data-i18n="dim_epoch_n"></td></tr>
+      <tr><td data-i18n="dim_full"></td><td class="tensor">(N, 23, 512)</td><td data-i18n="dim_full_n"></td></tr>
+      <tr><td colspan="3" style="color:var(--dim);font-style:italic">&#9472; EEG Encoder &#9472;</td></tr>
+      <tr><td data-i18n="dim_enc_in"></td><td class="tensor">(B, 1, 23, 512)</td><td data-i18n="dim_enc_in_n"></td></tr>
+      <tr><td data-i18n="dim_chattn"></td><td class="tensor">(B, 1, 23, 512)</td><td data-i18n="dim_chattn_n"></td></tr>
+      <tr><td data-i18n="dim_tconv"></td><td class="tensor">(B, 40, 23, 488)</td><td>T' = 512-25+1</td></tr>
+      <tr><td data-i18n="dim_pool"></td><td class="tensor">(B, 40, 23, 121)</td><td>T'' = (488-8)/4+1</td></tr>
+      <tr><td data-i18n="dim_sconv"></td><td class="tensor">(B, 40, 1, 121)</td><td data-i18n="dim_sconv_n"></td></tr>
+      <tr><td data-i18n="dim_apool"></td><td class="tensor">(B, 40, 1, 16)</td><td data-i18n="dim_apool_n"></td></tr>
+      <tr><td data-i18n="dim_flat"></td><td class="tensor">(B, 256)</td><td>640 &#8594; 256 = embed_dim</td></tr>
+      <tr><td colspan="3" style="color:var(--dim);font-style:italic">&#9472; Stage 1 &#9472;</td></tr>
+      <tr><td>ContrastiveProjector</td><td class="tensor">(B, 128)</td><td>256&#8594;256&#8594;128 = proj_dim</td></tr>
+      <tr><td colspan="3" style="color:var(--dim);font-style:italic">&#9472; Stage 2 &#9472;</td></tr>
+      <tr><td data-i18n="dim_textemb"></td><td class="tensor">(B, 384)</td><td data-i18n="dim_textemb_n"></td></tr>
+      <tr><td>TextProjector</td><td class="tensor">(B, 128)</td><td>384&#8594;128 + ResidualMLP + LN</td></tr>
+      <tr><td>AlignmentProjector</td><td class="tensor">(B, 128)</td><td>256&#8594;128 + ResidualMLP + LN</td></tr>
+      <tr><td data-i18n="dim_sim"></td><td class="tensor">(B, B)</td><td>eeg_proj @ text_proj.T</td></tr>
+      <tr><td colspan="3" style="color:var(--dim);font-style:italic">&#9472; Stage 3 &#9472;</td></tr>
+      <tr><td data-i18n="dim_cat"></td><td class="tensor">(B, 512)</td><td>256 + 256</td></tr>
+      <tr><td data-i18n="dim_fuse"></td><td class="tensor">(B, 256)</td><td>512&#8594;256&#8594;256</td></tr>
+      <tr><td data-i18n="dim_logit"></td><td class="tensor">(B, 2)</td><td data-i18n="dim_logit_n"></td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h3 data-i18n="param_title"></h3>
+    <table>
+      <tr><th data-i18n="th_module"></th><th data-i18n="th_shape_f"></th><th data-i18n="th_params"></th></tr>
+      <tr><td>ChannelAttention (&#215;2)</td><td>23&#8594;5&#8594;23, 258/inst</td><td>~516</td></tr>
+      <tr><td>TemporalConv (&#215;2)</td><td>Conv2d(1,40,k=25)+BN, 1120/inst</td><td>~2,240</td></tr>
+      <tr><td>SpatialConv (&#215;2)</td><td>Conv2d(40,40,k=(23,1))+BN, 36920/inst</td><td>~73,840</td></tr>
+      <tr><td>Projection Linear (&#215;2)</td><td>640&#8594;256, 164096/inst</td><td>~328,192</td></tr>
+      <tr><td>ContrastiveProjector</td><td>256&#8594;256&#8594;128</td><td>~98,688</td></tr>
+      <tr><td>AlignmentProjector</td><td>256&#8594;128 + ResidualMLP + LN</td><td>~49,664</td></tr>
+      <tr><td>TextProjector</td><td>384&#8594;128 + ResidualMLP + LN</td><td>~66,048</td></tr>
+      <tr><td>Fusion MLP</td><td>512&#8594;256&#8594;256</td><td>~197,120</td></tr>
+      <tr><td>Classifier</td><td>256&#8594;2</td><td>~514</td></tr>
+      <tr><td colspan="2" style="font-weight:700" data-i18n="param_total"></td><td style="font-weight:700">~817K</td></tr>
+    </table>
+  </div>
+</div>
+</div>
+
+<!-- ===== DATA SPLIT ===== -->
+<div class="panel" id="panel-data">
+<div class="arch-container">
+  <div class="card">
+    <h3 data-i18n="split_title"></h3>
+    <p style="color:var(--dim);font-size:0.85rem;margin-bottom:16px" data-i18n="split_desc"></p>
+    <svg viewBox="0 0 700 180" xmlns="http://www.w3.org/2000/svg">
+      <rect x="10" y="30" width="680" height="40" rx="6" fill="#f1f5f9" stroke="#d0d7de"/>
+      <text x="350" y="55" text-anchor="middle" fill="#656d76" font-size="12" data-i18n-svg="svg_36subj"></text>
+      <rect x="10" y="100" width="440" height="50" rx="6" fill="#dbeafe" stroke="#0969da"/>
+      <text x="230" y="122" text-anchor="middle" fill="#0969da" font-size="12" font-weight="600" data-i18n-svg="svg_train"></text>
+      <text x="230" y="138" text-anchor="middle" fill="#656d76" font-size="10" data-i18n-svg="svg_train_use"></text>
+      <rect x="460" y="100" width="110" height="50" rx="6" fill="#fef3c7" stroke="#bf8700"/>
+      <text x="515" y="122" text-anchor="middle" fill="#bf8700" font-size="12" font-weight="600" data-i18n-svg="svg_val"></text>
+      <text x="515" y="138" text-anchor="middle" fill="#656d76" font-size="10" data-i18n-svg="svg_val_use"></text>
+      <rect x="580" y="100" width="110" height="50" rx="6" fill="#dcfce7" stroke="#1a7f37"/>
+      <text x="635" y="122" text-anchor="middle" fill="#1a7f37" font-size="12" font-weight="600" data-i18n-svg="svg_test"></text>
+      <text x="635" y="138" text-anchor="middle" fill="#656d76" font-size="10" data-i18n-svg="svg_test_use"></text>
+      <line x1="230" y1="70" x2="230" y2="98" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+      <line x1="515" y1="70" x2="515" y2="98" stroke="#bf8700" stroke-width="1.5" marker-end="url(#ah-o)"/>
+      <line x1="635" y1="70" x2="635" y2="98" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+    </svg>
+    <table>
+      <tr><th data-i18n="th_stage"></th><th data-i18n="th_train"></th><th data-i18n="th_val"></th><th data-i18n="th_test"></th></tr>
+      <tr><td><span class="badge badge-s1">Stage 1</span></td><td data-i18n="split_s1_train"></td><td style="color:var(--dim)" data-i18n="split_s1_val"></td><td style="color:var(--dim)">&#8212;</td></tr>
+      <tr><td><span class="badge badge-s2a">Stage 2</span></td><td data-i18n="split_s2_train"></td><td data-i18n="split_s2_val"></td><td style="color:var(--dim)">&#8212;</td></tr>
+      <tr><td><span class="badge badge-s3">Stage 3</span></td><td data-i18n="split_s3_train"></td><td data-i18n="split_s3_val"></td><td style="color:var(--dim)">&#8212;</td></tr>
+      <tr><td style="font-weight:700" data-i18n="split_final"></td><td style="color:var(--dim)">&#8212;</td><td style="color:var(--dim)">&#8212;</td><td style="color:var(--s3);font-weight:700" data-i18n="split_final_test"></td></tr>
+    </table>
+    <div class="highlight hl-s3" style="margin-top:16px;font-size:0.85rem" data-i18n="split_guarantee"></div>
+  </div>
+  <div class="card">
+    <h3 data-i18n="textemb_title"></h3>
+    <table>
+      <tr><th>ID</th><th data-i18n="th_condkey"></th><th data-i18n="th_desc_text"></th></tr>
+      <tr><td style="font-weight:600">0</td><td class="tensor">(0, "early")</td><td data-i18n="td_0e"></td></tr>
+      <tr><td style="font-weight:600">1</td><td class="tensor">(0, "mid")</td><td data-i18n="td_0m"></td></tr>
+      <tr><td style="font-weight:600">2</td><td class="tensor">(0, "late")</td><td data-i18n="td_0l"></td></tr>
+      <tr><td style="font-weight:600">3</td><td class="tensor">(1, "early", 1)</td><td data-i18n="td_1e1"></td></tr>
+      <tr><td style="font-weight:600">4</td><td class="tensor">(1, "mid", 1)</td><td data-i18n="td_1m1"></td></tr>
+      <tr><td style="font-weight:600">5</td><td class="tensor">(1, "late", 1)</td><td data-i18n="td_1l1"></td></tr>
+      <tr><td style="font-weight:600">6</td><td class="tensor">(1, "early", 0)</td><td data-i18n="td_1e0"></td></tr>
+      <tr><td style="font-weight:600">7</td><td class="tensor">(1, "mid", 0)</td><td data-i18n="td_1m0"></td></tr>
+      <tr><td style="font-weight:600">8</td><td class="tensor">(1, "late", 0)</td><td data-i18n="td_1l0"></td></tr>
+    </table>
+    <p style="color:var(--dim);font-size:0.82rem;margin-top:8px" data-i18n="textemb_note"></p>
+  </div>
+</div>
+</div>
+
+<script>
+const I = {
+zh: {
+  title: "DualAlign-CogLoad 模型架构",
+  subtitle: "三阶段训练流水线 — 融合 CL-SSTER + NICE++ 的认知负荷监测系统",
+  tab_overview: "整体流程", tab_encoder: "EEG 编码器", tab_stage1: "阶段1: 跨被试",
+  tab_stage2: "阶段2: 语言引导", tab_stage3: "阶段3: 分类", tab_dims: "张量维度", tab_data: "数据划分",
+  leg_s1: "阶段1: 跨被试对比学习", leg_s2a: "阶段2A: 文本投影塑造", leg_s2b: "阶段2B: EEG-文本对齐", leg_s3: "阶段3: 分类微调",
+
+  svg_eeg_input: "EEG 信号输入", svg_text_desc: "任务文本描述", svg_9cond: "9种条件的自然语言描述",
+  svg_frozen_model: "(all-MiniLM-L6-v2, 冻结)", svg_text_emb: "文本嵌入", svg_frozen_384: "(B, 384) 冻结",
+  svg_s1_title: "阶段1: 跨被试对比预训练 (CL-SSTER)", svg_cross_enc: "跨被试编码器", svg_shared_w: "EEGEncoder (共享权重)",
+  svg_contr_proj: "对比投影头", svg_infonce_desc: "EEG_A(被试i) ↔ EEG_B(被试j), 同condition_id(9类)=正例",
+  svg_infonce_opt: "τ = 0.07 | 优化器: AdamW(cross_encoder + cross_projector)",
+  svg_s2_title: "阶段2: 语言引导对齐预训练 (NICE++风格, 交替优化)",
+  svg_phaseA: "Phase A: 塑造文本空间", svg_phaseB: "Phase B: EEG对齐到精炼文本",
+  svg_supcon_desc: "同condition_id(9类)=正例, 不同条件推远",
+  svg_align_enc: "对齐编码器", svg_init_s1: "EEGEncoder (从阶段1初始化)",
+  svg_detached: "已分离(无梯度)", svg_clip_title: "CLIPLoss (双向对比)",
+  svg_clip_opt: "优化器: AdamW(align_encoder + align_projector) — 此阶段TextProjector冻结",
+  svg_s3_title: "阶段3: 双分支分类微调",
+  svg_fusion: "融合 MLP", svg_classifier: "分类器",
+  svg_s3_opt: "优化器: AdamW | 在留出验证被试上做早停 | 基于val-acc选checkpoint",
+  svg_s3_final: "在独立的测试被试上做最终评估（训练和验证中均未见过）",
+
+  enc_title: "EEGEncoder — CL-SSTER / NICE 混合架构",
+  enc_desc: "共两个实例: cross_encoder (分支1) 和 align_encoder (分支2)。align_encoder 在阶段1结束后通过 init_align_from_cross() 从 cross_encoder 初始化。",
+  enc_input: "输入 EEG", enc_chattn: "通道注意力 (SE-Net 风格, 可选)",
+  enc_temporal: "时间卷积块", enc_spatial: "空间卷积块",
+
+  s1_title: "跨被试对比预训练", s1_desc: "借鉴 CL-SSTER。学习一个共享的 EEG 表征空间，使不同被试的同条件 (9类: 任务类型 × 时间段 × 表现组) 样本靠近，不同条件样本远离。",
+  s1_data: "<strong>数据:</strong> <code>CrossSubjectPairDataset</code> — 对每对被试 (A, B)，按 9 类细粒度条件 (condition_id 0-8: 任务类型 × 时间段 × 表现组) 采样对齐的 EEG epoch 作为正例对。批次内的不同条件构成难负例。",
+  s1_fwd1: "EEG_A, EEG_B (同 condition_id, 不同被试)", s1_pos: "正例对: z_a[i] ↔ z_b[i] (同索引 = 同 condition_id)",
+  s1_batch_val: "每对被试64个样本", s1_ckpt_val: "最佳训练loss → stage1_best.pt",
+
+  s2_title: "语言引导对齐 (NICE++风格)",
+  s2_desc: "每个mini-batch内的两阶段交替优化，模仿 NICE++ (NICE-LLM)。align_encoder 在阶段2开始时从 cross_encoder 初始化。",
+  s2a_title: "Phase A: 塑造文本投影空间",
+  s2a_desc: "类比 NICE++ 的 Image↔Text 损失。TextProjector 学习为不同条件产生良好分离的表征。",
+  s2a_fwd1: "text_embeddings (冻结, 来自SentenceTransformer)",
+  s2a_loss_desc: "监督对比损失: 同 condition_id (9类) 的文本投影构成正例对。<br><code>sim = norm(text_proj) @ norm(text_proj).T / τ</code><br>将同条件文本表征拉近，不同条件推远。SupConLoss 使用 <code>batch['condition_id']</code> (0-8) 作为标签。",
+  s2b_title: "Phase B: EEG对齐到精炼文本",
+  s2b_desc: "类比 NICE++ 的 EEG↔Image 损失。文本投影被 <strong style='color:var(--red)'>分离(DETACHED)</strong> — 无梯度流向TextProjector。",
+  s2b_fwd2: "text_embeddings → TextProjector <strong>(已分离)</strong>",
+  s2b_loss_desc: "<code>logits = scale * eeg_proj @ text_proj.T</code><br><code>loss = (CE(logits, labels) + CE(logits.T, labels)) / 2</code><br>对角线 = 正例对 (样本i的EEG匹配其文本)。",
+  s2_opt_title: "阶段2 优化汇总", s2_first: "每个mini-batch中先执行", s2_second: "每个mini-batch中后执行",
+  s2_ckpt_val: "验证被试上的最佳val-loss (EEG↔Text CLIP loss) → stage2_best.pt",
+
+  s3_title: "双分支分类微调",
+  s3_desc: "两个预训练编码器融合: 嵌入拼接后经2层MLP分类为认知负荷条件。推理时不使用文本特征 — 纯EEG分类。",
+  s3_freeze: "冻结选项", s3_freeze_val: "--freeze_encoders 冻结两个编码器，仅训练融合层+分类器",
+  s3_ckpt_val: "验证被试上最佳val-acc → stage3_best.pt",
+  s3_eval: "最终评估", s3_eval_val: "在测试被试上一次性评估（训练/验证中从未见过）",
+  s3_rationale_h: "设计原理",
+  s3_rationale: "<strong>双分支融合</strong>结合两种互补表征:<br>&#8226; <strong style='color:var(--s1)'>cross_encoder</strong>: 捕获<em>被试不变</em>的EEG模式 (通过跨被试对比学习获得)<br>&#8226; <strong style='color:var(--s2b)'>align_encoder</strong>: 捕获<em>任务语义</em>的EEG模式 (通过语言引导对齐获得)<br>拼接保留两种信号特征。MLP学习加权组合它们以进行分类。",
+
+  h_fwd: "前向传播路径", h_loss: "损失函数", h_trainable: "可训练参数", h_hyper: "超参数", h_loss_opt: "损失与优化",
+  th_module: "模块", th_status: "状态", th_prop: "属性", th_stage: "阶段", th_train: "训练集", th_val: "验证集", th_test: "测试集",
+  hp_optim: "优化器", hp_sched: "调度器", hp_temp: "温度 τ", hp_batch: "批次", hp_ckpt: "检查点选择",
+  hp_lr: "学习率", hp_params: "参数", hp_order: "执行顺序", hp_loss: "损失函数",
+  trainable: "可训练", frozen_unused: "冻结 / 未使用", frozen_detach: "冻结 (已分离)",
+  other_modules: "其他模块", eeg_modules: "EEG 模块", untouched: "不参与",
+
+  dim_title: "完整张量维度流 (EEGMAT 数据集)", param_title: "模型参数量分解",
+  th_location: "位置", th_shape: "形状", th_notes: "备注", th_shape_f: "形状 / 公式", th_params: "约参数量",
+  dim_raw: "原始 EDF 输入", dim_raw_n: "23通道, 60秒 @ 256Hz",
+  dim_epoch: "切片后 (2秒)", dim_epoch_n: "每文件约30个epoch",
+  dim_full: "完整数据集 EEG", dim_full_n: "N ≈ 2160 总epoch数",
+  dim_enc_in: "编码器输入", dim_enc_in_n: "增加通道维度",
+  dim_chattn: "通道注意力后", dim_chattn_n: "重加权通道",
+  dim_tconv: "时间卷积后", dim_pool: "平均池化后",
+  dim_sconv: "空间卷积后", dim_sconv_n: "全通道折叠",
+  dim_apool: "自适应池化后", dim_apool_n: "固定时间输出",
+  dim_flat: "展平+线性后",
+  dim_textemb: "文本嵌入 (冻结)", dim_textemb_n: "来自 SentenceTransformer",
+  dim_sim: "CLIP 相似度矩阵", dim_cat: "拼接特征", dim_fuse: "融合MLP输出",
+  dim_logit: "分类器 logits", dim_logit_n: "静息 vs 心算", param_total: "总计",
+
+  split_title: "严格三集合被试划分 (无测试集窥探)",
+  split_desc: "所有划分均按<strong>被试</strong>维度进行 — 同一被试的数据不会出现在多个集合中。",
+  svg_36subj: "36个被试 (EEGMAT), 按seed随机打乱",
+  svg_train: "训练集: ~24个被试 (65%)", svg_train_use: "阶段1/2/3训练",
+  svg_val: "验证集: ~5个被试", svg_val_use: "检查点选择",
+  svg_test: "测试集: ~7个被试", svg_test_use: "仅最终评估",
+  split_s1_train: "训练被试的跨被试配对", split_s1_val: "— (使用训练loss)",
+  split_s2_train: "训练被试 (EEG + 文本)", split_s2_val: "验证被试上早停 (CLIP loss)",
+  split_s3_train: "训练被试 (仅EEG)", split_s3_val: "验证被试上早停 (accuracy)",
+  split_final: "最终评估", split_final_test: "一次性评估",
+  split_guarantee: "<strong>核心保证:</strong> 测试被试在训练和检查点选择期间<strong>从未</strong>被看到。验证被试<strong>仅</strong>用于早停/最佳检查点选择，不参与梯度更新。这消除了测试集窥探偏差。",
+
+  textemb_title: "文本嵌入生成 (预计算, 冻结)", th_condkey: "条件键", th_desc_text: "描述",
+  td_0e: "静息态初始阶段，被试安静闭眼坐着，大脑处于放松基线状态",
+  td_0m: "静息态中段，持续安静休息，大脑维持低唤醒基线活动",
+  td_0l: "静息态后段，较长时间安静休息，可能轻微嗜睡",
+  td_1e0: "心算任务起始，连续减法，计算困难者认知负荷较高",
+  td_1m0: "心算任务中段，持续高难度运算，认知资源高度消耗",
+  td_1l0: "心算任务后段，长时间高负荷导致认知疲劳积累",
+  td_1e1: "心算任务起始，被试计算较为流畅",
+  td_1m1: "心算任务中段，保持稳定计算节奏和适度认知投入",
+  td_1l1: "心算任务后段，可能轻微疲劳但仍维持效率",
+  textemb_note: "每条描述 → all-MiniLM-L6-v2 → 384维归一化向量 (冻结)。共9个唯一嵌入。",
+
+  enc_svg_title: "EEGEncoder 流水线架构", enc_svg_sub: "cross_encoder / align_encoder 共享相同架构",
+  enc_svg_in: "输入 EEG", enc_svg_temp: "时间卷积块", enc_svg_spat: "空间卷积块",
+  enc_svg_spat_n: "通道 23→1 折叠", enc_svg_pool: "池化 + 投影",
+  enc_svg_embed_n: "最终嵌入", enc_svg_dual: "两个独立实例",
+  enc_svg_b1: "① cross_encoder — 阶段1跨被试对比预训练",
+  enc_svg_b2: "② align_encoder — 阶段2语言引导对齐",
+  enc_svg_init: "init_align_from_cross(): 深拷贝 cross_encoder → align_encoder",
+  enc_design_h: "设计原理",
+  enc_design_temporal: "<strong>时间卷积</strong>: kernel=(1,25) 相当于在256Hz采样率下约100ms的时间窗口，用于提取时频域特征（类似带通滤波器）。40个滤波器学习不同频率模式。AvgPool以stride=4下采样，保留关键时间信息。",
+  enc_design_spatial: "<strong>空间卷积</strong>: kernel=(C,1)=(23,1) 一次性跨所有通道混合，将通道维度折叠为1。等效于学习一组空间滤波器，加权组合不同电极信号。Dropout=0.5防止过拟合。",
+  enc_design_pool: "<strong>自适应池化+投影</strong>: AdaptiveAvgPool固定时间维度为16，确保不同长度输入产生一致的表征。Flatten后通过线性层将640维压缩到256维embed_dim。",
+  enc_code_h: "代码映射", enc_th_class: "实现类", enc_th_file: "文件位置",
+  enc_code_note: "两个EEGEncoder实例在DualAlignModel中创建，参数独立。align_encoder在阶段1完成后通过load_state_dict()从cross_encoder初始化。",
+
+  s1_svg_title: "阶段1: 跨被试对比学习流程",
+  s1_svg_eegA: "被试 A 的 EEG", s1_svg_eegB: "被试 B 的 EEG",
+  s1_svg_same_cond: "同条件(9类)", s1_svg_shared: "共享权重 — 同一个EEGEncoder实例",
+  s1_svg_sim: "相似度矩阵", s1_svg_pos: "← 正例对", s1_svg_neg: "← 负例",
+  s1_svg_comp: "计算步骤",
+  s1_svg_goal: "目标: 同条件的不同被试表征靠近",
+  s1_svg_goal2: "不同条件的表征相互远离",
+  s1_svg_opt: "优化: AdamW(cross_encoder + cross_projector)",
+  s1_svg_loop: "训练循环 (每个epoch)", s1_svg_loop1: "for batch in pair_loader:",
+  s1_svg_loop2: "  z_a = model.forward_cross_subject(eeg_a)",
+  s1_svg_loop3: "  z_b = model.forward_cross_subject(eeg_b)",
+  s1_svg_loop4: "  loss, acc = InfoNCELoss(z_a, z_b)",
+  s1_svg_grad: "梯度仅流经: cross_encoder + cross_projector",
+  s1_svg_grad2: "其他所有模块不参与本阶段训练",
+  s1_pair_h: "跨被试配对策略",
+  s1_pair_desc: "<strong>CrossSubjectPairDataset</strong>: 遍历所有训练被试对 (A, B)。对每对被试，按 9 类 condition_id (任务×时段×表现组) 采样对齐的 EEG epoch。<br>&#8226; <strong>正例</strong>: z_a[i] 与 z_b[i] 具有相同 condition_id，但来自不同被试<br>&#8226; <strong>负例</strong>: 批次内不同 condition_id 的样本<br>&#8226; 注意: good-performer(ID 3-5) 和 bad-performer(ID 6-8) 只在 rest 条件(ID 0-2) 上产生跨组配对<br>&#8226; 这迫使编码器学习<em>被试不变</em>的表征 — 相同条件跨被试产生相似嵌入",
+
+  s2_svg_title: "阶段2: 语言引导对齐 (NICE++风格)", s2_svg_sub: "每个mini-batch内交替执行 Phase A 和 Phase B",
+  s2_svg_phA: "Phase A: 塑造文本空间", s2_svg_phB: "Phase B: EEG对齐到精炼文本",
+  s2_svg_textemb: "文本嵌入 (冻结)", s2_svg_textemb2: "文本嵌入 (冻结)",
+  s2_svg_eegin: "EEG 输入",
+  s2_svg_supcon_d: "同条件=正例对，不同条件=负例",
+  s2_svg_optA: "→ 优化: optimizer_text(text_projector + logit_scale)",
+  s2_svg_initS1: "从阶段1的cross_encoder初始化",
+  s2_svg_det: "已分离(无梯度)",
+  s2_svg_optB: "→ 优化: optimizer_eeg(align_encoder + align_projector)",
+  s2_svg_loop: "每个 mini-batch 的训练步骤",
+  s2_svg_step1: "Step 1: optimizer_text.zero_grad() → forward_text_phase(tf) → SupConLoss → backward → step",
+  s2_svg_step2: "Step 2: optimizer_eeg.zero_grad() → forward_eeg_phase(eeg, tf) → CLIPLoss → backward → step",
+  s2_svg_step3: "Phase A 和 Phase B 在同一个 batch 上顺序执行，每个 batch 两次前向+反向传播",
+  s2_svg_step4: "验证: 在验证被试上计算 CLIP loss (forward_eeg_phase)，用于早停和检查点选择",
+  s2_nicep_h: "与 NICE++ 的对应关系",
+  s2_nicep_desc: "<strong>NICE++ (NICE-LLM) 原始设计</strong>中使用两种损失交替优化:<br>&#8226; <strong>Image↔Text Loss</strong>: 用 Proj_img 精炼图像特征，使同类别聚拢 → 本系统用 <strong style='color:var(--s2a)'>SupConLoss + TextProjector</strong> 替代，将图像换成文本条件描述<br>&#8226; <strong>EEG↔Image Loss</strong>: EEG编码器对齐到精炼后的图像表征（图像侧分离无梯度）→ 本系统用 <strong style='color:var(--s2b)'>CLIPLoss + align_encoder</strong> 替代，将图像换成文本投影<br>&#8226; 核心思想相同: <em>语义锚点</em>先塑造好，EEG再向锚点对齐。分离机制确保两个优化目标不会互相干扰。",
+
+  s3_svg_title: "阶段3: 双分支融合分类", s3_svg_sub: "推理时纯EEG输入 — 不需要文本特征",
+  s3_svg_in: "EEG 输入",
+  s3_svg_b1_src: "来自阶段1预训练", s3_svg_b1_note: "捕获被试不变模式",
+  s3_svg_b2_src: "来自阶段2预训练", s3_svg_b2_note: "捕获任务语义模式",
+  s3_svg_fusion: "融合 MLP (2层)", s3_svg_cls: "分类器",
+  s3_svg_inf_title: "推理特点",
+  s3_svg_inf1: "仅需EEG信号输入",
+  s3_svg_inf2: "不依赖文本特征或描述",
+  s3_svg_inf3: "纯EEG端到端分类",
+  s3_svg_inf4: "文本知识已通过阶段2蒸馏到align_encoder中",
+  s3_svg_eval_title: "评估流程",
+  s3_svg_eval1: "训练: 训练被试 → val-acc早停",
+  s3_svg_eval2: "验证: 验证被试 → 选最佳checkpoint",
+  s3_svg_eval3: "测试: 独立测试被试 → 一次性评估",
+  s3_svg_eval4: "指标: accuracy, f1_macro, confusion_matrix",
+  s3_inference_h: "推理流程说明",
+  s3_inference_desc: "<strong>关键设计</strong>: 阶段3的推理路径完全不需要文本输入。文本的语义知识已在阶段2中通过对比学习「蒸馏」进入了 align_encoder。<br><br><strong>推理路径</strong>: EEG → [cross_encoder, align_encoder] → cat → Fusion MLP → Classifier → 预测类别<br><br><strong>冻结选项</strong>: 使用 <code>--freeze_encoders</code> 可冻结两个编码器，仅训练融合层和分类器头。这在数据量较少时可防止过拟合，保留预训练学到的表征。",
+},
+en: {
+  title: "DualAlign-CogLoad Model Architecture",
+  subtitle: "Three-Stage Training Pipeline — CL-SSTER + NICE++ Inspired Cognitive Load Monitoring",
+  tab_overview: "Overall Pipeline", tab_encoder: "EEG Encoder", tab_stage1: "Stage 1: Cross-Subject",
+  tab_stage2: "Stage 2: Language-Guided", tab_stage3: "Stage 3: Classification", tab_dims: "Tensor Dimensions", tab_data: "Data Split",
+  leg_s1: "Stage 1: Cross-Subject Contrastive", leg_s2a: "Stage 2A: Text Projection Shaping", leg_s2b: "Stage 2B: EEG-Text Alignment", leg_s3: "Stage 3: Classification",
+
+  svg_eeg_input: "EEG Signal Input", svg_text_desc: "Task Text Descriptions", svg_9cond: "9 conditions in natural language",
+  svg_frozen_model: "(all-MiniLM-L6-v2, frozen)", svg_text_emb: "Text Embeddings", svg_frozen_384: "(B, 384) frozen",
+  svg_s1_title: "STAGE 1: Cross-Subject Contrastive Pre-training (CL-SSTER)", svg_cross_enc: "Cross-Encoder", svg_shared_w: "EEGEncoder (shared weights)",
+  svg_contr_proj: "ContrastiveProjector", svg_infonce_desc: "EEG_A(subj_i) ↔ EEG_B(subj_j), same condition_id (9cls) = positive",
+  svg_infonce_opt: "τ = 0.07 | Optimizer: AdamW(cross_encoder + cross_projector)",
+  svg_s2_title: "STAGE 2: Language-Guided Alignment Pre-training (NICE++ Style, Alternating Opt.)",
+  svg_phaseA: "Phase A: Shape Text Space", svg_phaseB: "Phase B: Align EEG to Refined Text",
+  svg_supcon_desc: "same condition_id (9cls) = positive, push apart different",
+  svg_align_enc: "Align-Encoder", svg_init_s1: "EEGEncoder (init from Stage1)",
+  svg_detached: "DETACHED", svg_clip_title: "CLIPLoss (Bidirectional Contrastive)",
+  svg_clip_opt: "Optimizer: AdamW(align_encoder + align_projector) — TextProjector frozen here",
+  svg_s3_title: "STAGE 3: Dual-Branch Classification Fine-tuning",
+  svg_fusion: "Fusion MLP", svg_classifier: "Classifier",
+  svg_s3_opt: "Optimizer: AdamW | Early stopping on val subjects | Checkpoint by val-acc",
+  svg_s3_final: "Final evaluation on separate TEST subjects (never seen during training or validation)",
+
+  enc_title: "EEGEncoder — Hybrid CL-SSTER / NICE Architecture",
+  enc_desc: "Two identical instances: cross_encoder (Branch 1) and align_encoder (Branch 2). align_encoder is initialized from cross_encoder after Stage 1 via init_align_from_cross().",
+  enc_input: "Input EEG", enc_chattn: "ChannelAttention (SE-Net style, optional)",
+  enc_temporal: "Temporal Block", enc_spatial: "Spatial Block",
+
+  s1_title: "Cross-Subject Contrastive Pre-training", s1_desc: "Inspired by CL-SSTER. Learns a shared EEG representation space where same-condition (9 classes: task × time-segment × performance-group) samples from different subjects are close, different conditions are far apart.",
+  s1_data: "<strong>Data:</strong> <code>CrossSubjectPairDataset</code> — for each subject pair (A, B), samples aligned EEG epochs by 9-class fine-grained condition (condition_id 0-8: task × time-segment × performance-group) as positive pairs. Different conditions in the batch serve as hard negatives.",
+  s1_fwd1: "EEG_A, EEG_B (same condition_id, different subjects)", s1_pos: "Positive pair: z_a[i] ↔ z_b[i] (same index = same condition_id)",
+  s1_batch_val: "64 samples per subject pair", s1_ckpt_val: "Best train-loss → stage1_best.pt",
+
+  s2_title: "Language-Guided Alignment (NICE++ Style)",
+  s2_desc: "Alternating two-phase optimization within each mini-batch, mirroring NICE++ (NICE-LLM). align_encoder is initialized from cross_encoder at the start of Stage 2.",
+  s2a_title: "Phase A: Shape Text Projection Space",
+  s2a_desc: "Analogous to NICE++ Image↔Text loss. TextProjector learns to produce well-separated representations for different conditions.",
+  s2a_fwd1: "text_embeddings (frozen, from SentenceTransformer)",
+  s2a_loss_desc: "Supervised contrastive: text projections with same condition_id (9 classes) form positive pairs.<br><code>sim = norm(text_proj) @ norm(text_proj).T / τ</code><br>Pushes same-condition representations together, different apart. SupConLoss uses <code>batch['condition_id']</code> (0-8) as labels.",
+  s2b_title: "Phase B: Align EEG to Refined Text",
+  s2b_desc: "Analogous to NICE++ EEG↔Image loss. Text projections are <strong style='color:var(--red)'>DETACHED</strong> — no gradient flows to TextProjector.",
+  s2b_fwd2: "text_embeddings → TextProjector <strong>(DETACHED)</strong>",
+  s2b_loss_desc: "<code>logits = scale * eeg_proj @ text_proj.T</code><br><code>loss = (CE(logits, labels) + CE(logits.T, labels)) / 2</code><br>Diagonal = positive pairs (sample i's EEG matches its text).",
+  s2_opt_title: "Stage 2 Optimization Summary", s2_first: "First (per mini-batch)", s2_second: "Second (per mini-batch)",
+  s2_ckpt_val: "Best val-loss (EEG↔Text CLIP loss on val subjects) → stage2_best.pt",
+
+  s3_title: "Dual-Branch Classification Fine-tuning",
+  s3_desc: "Both pre-trained encoders are fused: their embeddings concatenated, passed through a 2-layer MLP, and classified into cognitive-load conditions. No text features used at inference — pure EEG classification.",
+  s3_freeze: "Freeze option", s3_freeze_val: "--freeze_encoders freezes both encoders, trains only fusion + classifier",
+  s3_ckpt_val: "Best val-acc on val subjects → stage3_best.pt",
+  s3_eval: "Final eval", s3_eval_val: "One-shot on test subjects (never seen in train or val)",
+  s3_rationale_h: "Key Design Rationale",
+  s3_rationale: "<strong>Dual-branch fusion</strong> combines two complementary representations:<br>&#8226; <strong style='color:var(--s1)'>cross_encoder</strong>: captures <em>subject-invariant</em> EEG patterns (learned via cross-subject contrastive)<br>&#8226; <strong style='color:var(--s2b)'>align_encoder</strong>: captures <em>task-semantic</em> EEG patterns (learned via language-guided alignment)<br>Concatenation preserves both signal aspects. The MLP learns to weight and combine them for classification.",
+
+  h_fwd: "Forward Path", h_loss: "Loss Function", h_trainable: "Trainable Parameters", h_hyper: "Hyperparameters", h_loss_opt: "Loss & Optimization",
+  th_module: "Module", th_status: "Status", th_prop: "Property", th_stage: "Stage", th_train: "Train Set", th_val: "Val Set", th_test: "Test Set",
+  hp_optim: "Optimizer", hp_sched: "Scheduler", hp_temp: "Temperature τ", hp_batch: "Batch", hp_ckpt: "Checkpoint",
+  hp_lr: "Learning rate", hp_params: "Parameters", hp_order: "Execution order", hp_loss: "Loss",
+  trainable: "Trainable", frozen_unused: "Frozen / Unused", frozen_detach: "Frozen (detached)",
+  other_modules: "All other modules", eeg_modules: "EEG modules", untouched: "Untouched",
+
+  dim_title: "Complete Tensor Dimension Flow (EEGMAT Dataset)", param_title: "Model Parameter Count Breakdown",
+  th_location: "Location", th_shape: "Shape", th_notes: "Notes", th_shape_f: "Shape / Formula", th_params: "Approx Params",
+  dim_raw: "Raw EDF input", dim_raw_n: "23ch, 60s @ 256Hz",
+  dim_epoch: "After epoching (2s)", dim_epoch_n: "30 epochs per file",
+  dim_full: "Full dataset EEG", dim_full_n: "N ≈ 2160 total epochs",
+  dim_enc_in: "Encoder input", dim_enc_in_n: "unsqueeze channel dim",
+  dim_chattn: "After ChannelAttention", dim_chattn_n: "reweighted channels",
+  dim_tconv: "After TemporalConv", dim_pool: "After AvgPool",
+  dim_sconv: "After SpatialConv", dim_sconv_n: "full channel collapse",
+  dim_apool: "After AdaptiveAvgPool", dim_apool_n: "fixed temporal output",
+  dim_flat: "After Flatten + Linear",
+  dim_textemb: "Text embedding (frozen)", dim_textemb_n: "from SentenceTransformer",
+  dim_sim: "CLIP similarity matrix", dim_cat: "Concatenated features", dim_fuse: "Fusion MLP out",
+  dim_logit: "Classifier logits", dim_logit_n: "rest vs arithmetic", param_total: "Total",
+
+  split_title: "Strict Three-Way Subject Split (No Test-Set Peeking)",
+  split_desc: "All splits are by <strong>subject</strong> — no data from the same person appears in multiple sets.",
+  svg_36subj: "36 Subjects (EEGMAT), shuffled by seed",
+  svg_train: "Train: ~24 subjects (65%)", svg_train_use: "Stage 1/2/3 training",
+  svg_val: "Val: ~5 subj", svg_val_use: "Ckpt selection",
+  svg_test: "Test: ~7 subj", svg_test_use: "Final eval only",
+  split_s1_train: "cross-subject pairs from train subs", split_s1_val: "— (uses train loss)",
+  split_s2_train: "train subs (EEG + text)", split_s2_val: "early-stopping on val subs (CLIP loss)",
+  split_s3_train: "train subs (EEG only)", split_s3_val: "early-stopping on val subs (accuracy)",
+  split_final: "Final Eval", split_final_test: "One-shot evaluation",
+  split_guarantee: "<strong>Key guarantee:</strong> Test subjects are NEVER seen during training or checkpoint selection. Val subjects are used ONLY for early-stopping / best-checkpoint selection, not for gradient updates. This eliminates test-set peeking bias.",
+
+  textemb_title: "Text Embedding Generation (Pre-computed, Frozen)", th_condkey: "Condition Key", th_desc_text: "Description",
+  td_0e: "Initial resting state baseline, eyes closed, relaxed baseline",
+  td_0m: "Middle resting state period, sustained quiet rest",
+  td_0l: "Late resting state phase, possible mild drowsiness",
+  td_1e0: "Beginning arithmetic, serial subtraction, high load for slow performer",
+  td_1m0: "Ongoing demanding arithmetic, high cognitive resource consumption",
+  td_1l0: "Late arithmetic, accumulated cognitive fatigue",
+  td_1e1: "Beginning arithmetic, fluent computation",
+  td_1m1: "Ongoing arithmetic, moderate cognitive engagement",
+  td_1l1: "Late arithmetic, maintaining efficiency",
+  textemb_note: "Each description → all-MiniLM-L6-v2 → 384-d normalized vector (frozen). 9 unique embeddings total.",
+
+  enc_svg_title: "EEGEncoder Pipeline Architecture", enc_svg_sub: "cross_encoder / align_encoder share identical architecture",
+  enc_svg_in: "Input EEG", enc_svg_temp: "Temporal Block", enc_svg_spat: "Spatial Block",
+  enc_svg_spat_n: "channels 23→1 collapse", enc_svg_pool: "Pool + Project",
+  enc_svg_embed_n: "final embedding", enc_svg_dual: "Two Independent Instances",
+  enc_svg_b1: "① cross_encoder — Stage 1 cross-subject contrastive",
+  enc_svg_b2: "② align_encoder — Stage 2 language-guided alignment",
+  enc_svg_init: "init_align_from_cross(): deep copy cross_encoder → align_encoder",
+  enc_design_h: "Design Rationale",
+  enc_design_temporal: "<strong>Temporal convolution</strong>: kernel=(1,25) spans ~100ms at 256Hz, acting as a learnable band-pass filter bank. 40 filters capture different time-frequency patterns. AvgPool with stride=4 downsamples while preserving key temporal information.",
+  enc_design_spatial: "<strong>Spatial convolution</strong>: kernel=(C,1)=(23,1) mixes across all channels at once, collapsing the channel dimension to 1. Equivalent to learning a set of spatial filters that weight-combine electrode signals. Dropout=0.5 prevents overfitting.",
+  enc_design_pool: "<strong>Adaptive pool + projection</strong>: AdaptiveAvgPool fixes temporal dimension to 16, ensuring consistent representations regardless of input length. Flatten then linear layer compresses 640-d to 256-d embed_dim.",
+  enc_code_h: "Code Mapping", enc_th_class: "Implementation", enc_th_file: "Source File",
+  enc_code_note: "Two EEGEncoder instances are created in DualAlignModel with independent parameters. align_encoder is initialized from cross_encoder via load_state_dict() after Stage 1.",
+
+  s1_svg_title: "Stage 1: Cross-Subject Contrastive Learning Flow",
+  s1_svg_eegA: "Subject A EEG", s1_svg_eegB: "Subject B EEG",
+  s1_svg_same_cond: "same cond.(9cls)", s1_svg_shared: "Shared weights — single EEGEncoder instance",
+  s1_svg_sim: "Similarity Matrix", s1_svg_pos: "← positive", s1_svg_neg: "← negative",
+  s1_svg_comp: "Computation Steps",
+  s1_svg_goal: "Goal: same-condition representations",
+  s1_svg_goal2: "from different subjects become close",
+  s1_svg_opt: "Optimize: AdamW(cross_encoder + cross_projector)",
+  s1_svg_loop: "Training Loop (per epoch)", s1_svg_loop1: "for batch in pair_loader:",
+  s1_svg_loop2: "  z_a = model.forward_cross_subject(eeg_a)",
+  s1_svg_loop3: "  z_b = model.forward_cross_subject(eeg_b)",
+  s1_svg_loop4: "  loss, acc = InfoNCELoss(z_a, z_b)",
+  s1_svg_grad: "Gradients flow only through: cross_encoder + cross_projector",
+  s1_svg_grad2: "All other modules are untouched in this stage",
+  s1_pair_h: "Cross-Subject Pairing Strategy",
+  s1_pair_desc: "<strong>CrossSubjectPairDataset</strong>: iterates all training subject pairs (A, B). For each pair, samples aligned EEG epochs by 9-class condition_id (task × time-segment × performance-group).<br>&#8226; <strong>Positives</strong>: z_a[i] and z_b[i] share the same condition_id but come from different subjects<br>&#8226; <strong>Negatives</strong>: samples with different condition_id in the batch<br>&#8226; Note: good-performers (ID 3-5) and bad-performers (ID 6-8) only pair across groups on rest conditions (ID 0-2)<br>&#8226; This forces the encoder to learn <em>subject-invariant</em> representations — same conditions across subjects produce similar embeddings",
+
+  s2_svg_title: "Stage 2: Language-Guided Alignment (NICE++ Style)", s2_svg_sub: "Phase A and Phase B alternate within each mini-batch",
+  s2_svg_phA: "Phase A: Shape Text Space", s2_svg_phB: "Phase B: Align EEG to Refined Text",
+  s2_svg_textemb: "Text Embeddings (frozen)", s2_svg_textemb2: "Text Embeddings (frozen)",
+  s2_svg_eegin: "EEG Input",
+  s2_svg_supcon_d: "same condition = positive, different = negative",
+  s2_svg_optA: "→ Optimize: optimizer_text(text_projector + logit_scale)",
+  s2_svg_initS1: "initialized from Stage 1 cross_encoder",
+  s2_svg_det: "DETACHED (no grad)",
+  s2_svg_optB: "→ Optimize: optimizer_eeg(align_encoder + align_projector)",
+  s2_svg_loop: "Training Steps per Mini-Batch",
+  s2_svg_step1: "Step 1: optimizer_text.zero_grad() → forward_text_phase(tf) → SupConLoss → backward → step",
+  s2_svg_step2: "Step 2: optimizer_eeg.zero_grad() → forward_eeg_phase(eeg, tf) → CLIPLoss → backward → step",
+  s2_svg_step3: "Phase A and Phase B execute sequentially on the same batch — two forward+backward per batch",
+  s2_svg_step4: "Validation: compute CLIP loss (forward_eeg_phase) on val subjects for early stopping & checkpointing",
+  s2_nicep_h: "Correspondence to NICE++",
+  s2_nicep_desc: "<strong>NICE++ (NICE-LLM) original design</strong> uses two alternating losses:<br>&#8226; <strong>Image↔Text Loss</strong>: Proj_img refines image features to cluster by category → Our system uses <strong style='color:var(--s2a)'>SupConLoss + TextProjector</strong>, replacing images with text condition descriptions<br>&#8226; <strong>EEG↔Image Loss</strong>: EEG encoder aligns with refined image representations (image side detached) → Our system uses <strong style='color:var(--s2b)'>CLIPLoss + align_encoder</strong>, replacing images with text projections<br>&#8226; Core idea is identical: <em>semantic anchors</em> are shaped first, then EEG aligns to them. Detachment ensures the two optimization objectives don't interfere.",
+
+  s3_svg_title: "Stage 3: Dual-Branch Fusion Classification", s3_svg_sub: "Pure EEG input at inference — no text features needed",
+  s3_svg_in: "EEG Input",
+  s3_svg_b1_src: "pre-trained in Stage 1", s3_svg_b1_note: "captures subject-invariant patterns",
+  s3_svg_b2_src: "pre-trained in Stage 2", s3_svg_b2_note: "captures task-semantic patterns",
+  s3_svg_fusion: "Fusion MLP (2 layers)", s3_svg_cls: "Classifier",
+  s3_svg_inf_title: "Inference Highlights",
+  s3_svg_inf1: "Only EEG signal as input",
+  s3_svg_inf2: "No text features or descriptions needed",
+  s3_svg_inf3: "Pure EEG end-to-end classification",
+  s3_svg_inf4: "Text knowledge distilled into align_encoder in Stage 2",
+  s3_svg_eval_title: "Evaluation Protocol",
+  s3_svg_eval1: "Train: train subjects → val-acc early stopping",
+  s3_svg_eval2: "Val: val subjects → best checkpoint selection",
+  s3_svg_eval3: "Test: separate test subjects → one-shot eval",
+  s3_svg_eval4: "Metrics: accuracy, f1_macro, confusion_matrix",
+  s3_inference_h: "Inference Pipeline",
+  s3_inference_desc: "<strong>Key design</strong>: Stage 3 inference requires NO text input at all. Text semantic knowledge has been 'distilled' into align_encoder through Stage 2 contrastive learning.<br><br><strong>Inference path</strong>: EEG → [cross_encoder, align_encoder] → cat → Fusion MLP → Classifier → predicted class<br><br><strong>Freeze option</strong>: Using <code>--freeze_encoders</code> freezes both encoders and trains only the fusion layers and classifier head. This prevents overfitting on small datasets while preserving pre-trained representations.",
+}
+};
+
+let curLang = 'zh';
+
+function applyLang() {
+  const d = I[curLang];
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const k = el.getAttribute('data-i18n');
+    if (d[k] !== undefined) el.innerHTML = d[k];
+  });
+  document.querySelectorAll('[data-i18n-svg]').forEach(el => {
+    const k = el.getAttribute('data-i18n-svg');
+    if (d[k] !== undefined) el.textContent = d[k];
+  });
+  document.documentElement.lang = curLang;
+}
+
+function setLang(lang) {
+  curLang = lang;
+  document.querySelectorAll('.lang-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector(`.lang-btn[onclick="setLang('${lang}')"]`).classList.add('active');
+  applyLang();
+}
+
+function showPanel(id) {
+  document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#main-tabs .tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + id).classList.add('active');
+  event.target.classList.add('active');
+}
+
+applyLang();
+</script>
+</body>
+</html>

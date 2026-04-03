@@ -2,7 +2,7 @@
 
 **Dual-Alignment Network for EEG-Based Cognitive Load Monitoring**
 
-A three-stage deep learning framework that combines **cross-subject contrastive alignment** (inspired by [CL-SSTER](https://github.com/SherazKhan/cl-sster)) and **EEG–stimulus feature alignment** (inspired by [NICE-EEG](https://github.com/eeyhsong/NICE-EEG)) to predict cognitive load levels (low / medium / high) from EEG signals.
+A three-stage deep learning framework that combines **cross-subject contrastive alignment** (inspired by [CL-SSTER](https://github.com/SherazKhan/cl-sster)) and **EEG–text embedding alignment** (inspired by [NICE-EEG](https://github.com/eeyhsong/NICE-EEG)) to classify cognitive load states (rest vs. mental arithmetic) from EEG signals.
 
 ---
 
@@ -11,7 +11,7 @@ A three-stage deep learning framework that combines **cross-subject contrastive 
 | Challenge | Solution |
 |-----------|----------|
 | EEG varies across individuals | **Stage 1** learns a shared cross-subject representation via contrastive learning (CL-SSTER style) |
-| Need to capture task-specific brain responses | **Stage 2** aligns individual EEG with task-condition embeddings via CLIP-style contrastive loss (NICE style) |
+| Need to capture task-specific brain responses | **Stage 2** aligns EEG embeddings with frozen text anchors via CLIP-style contrastive loss |
 | Must predict cognitive load robustly | **Stage 3** fuses both representations and fine-tunes a classifier |
 
 ## Architecture
@@ -38,7 +38,7 @@ A three-stage deep learning framework that combines **cross-subject contrastive 
                        ▼
               ┌──────────────────┐
               │  Classifier      │
-              │  → 3 classes     │
+              │  → 2 classes     │
               └──────────────────┘
 ```
 
@@ -61,18 +61,20 @@ ChannelAttention (SE-style)
 - **Loss**: InfoNCE (NT-Xent) — same condition across subjects = positive pair
 - **Goal**: learn universal cognitive-load features that generalise across individuals
 
-### Stage 2 — Stimulus-Task Alignment
+### Stage 2 — EEG–Text Alignment
 
-- **From NICE**: aligns EEG embeddings with task-condition feature vectors
+- Aligns EEG embeddings with frozen text anchors (one per class label, from `nn.Embedding`)
 - **Loss**: bidirectional CLIP-style contrastive loss
-- **Goal**: learn task-discriminative features that capture how each person responds to different load levels
+- **Goal**: learn task-discriminative features by aligning EEG to fixed label anchors
 - Initialised from Stage 1 weights (transfer learning)
+- Text embedding is **not trained** — only the EEG branch is updated
 
 ### Stage 3 — Classification Fine-tuning
 
 - Concatenates embeddings from both branches
-- MLP fusion → 3-class softmax
+- MLP fusion → 2-class softmax
 - **Loss**: cross-entropy with label smoothing
+- No text features at inference — pure EEG classification
 
 ## Quick Start
 
@@ -114,6 +116,8 @@ from data.base_loader import BaseDatasetLoader
 
 class MyDatasetLoader(BaseDatasetLoader):
     name = "my_dataset"                      # unique identifier
+    n_classes = 3                            # number of classes
+    label_names = {0: "low", 1: "mid", 2: "high"}
 
     def cache_tag(self, cfg) -> str:
         """Optional: custom cache filename to avoid collisions."""
@@ -127,8 +131,6 @@ class MyDatasetLoader(BaseDatasetLoader):
             "eeg":           eeg,            # (n_trials, n_channels, n_timepoints) float32
             "labels":        labels,         # (n_trials,) int64
             "subject_ids":   subject_ids,    # (n_trials,) int64
-            "condition_ids": condition_ids,  # (n_trials,) int64
-            "task_features": task_features,  # (n_trials, feat_dim) float32
         }
 ```
 
@@ -149,8 +151,8 @@ All loaders must return a dict with these keys:
 | `eeg` | `(N, C, T)` | float32 | EEG epochs |
 | `labels` | `(N,)` | int64 | Class labels (0-indexed) |
 | `subject_ids` | `(N,)` | int64 | Subject identifiers |
-| `condition_ids` | `(N,)` | int64 | Fine-grained condition IDs for contrastive pairing |
-| `task_features` | `(N, D)` | float32 | Task-condition feature vectors (e.g. text embeddings) |
+
+Additionally, set the `n_classes` and `label_names` class attributes on the loader.
 
 ## Built-in Datasets
 
@@ -177,11 +179,11 @@ code/
 ├── data/
 │   ├── base_loader.py     # BaseDatasetLoader ABC + registry
 │   ├── preprocessing.py   # Bandpass, normalise, MVNN
-│   ├── text_embeddings.py # Text-based task feature encoder
+│   ├── text_embeddings.py # (placeholder — text logic lives in loaders)
 │   ├── dataset.py         # PyTorch datasets & loaders
 │   └── loaders/           # ← drop new dataset loaders here
 │       ├── __init__.py    # Auto-discovery of loader modules
-│       └── eegmat.py      # EEGMAT dataset loader
+│       └── eegmat.py      # EEGMAT dataset loader (defines labels & class names)
 ├── models/
 │   ├── encoder.py         # EEG encoder + channel attention
 │   └── dual_align.py      # Full DualAlign model
@@ -198,9 +200,9 @@ code/
 | Aspect | CL-SSTER | NICE-EEG | DualAlign-CogLoad (Ours) |
 |--------|----------|----------|--------------------------|
 | **Task** | Shared representation learning | Visual object recognition | Cognitive load classification |
-| **Stimulus** | Continuous video/speech | Static images | Task conditions (n-back levels) |
-| **Alignment** | EEG ↔ EEG (cross-subject) | EEG ↔ DNN features | Both: EEG↔EEG + EEG↔task |
-| **Labels** | Unsupervised | Zero-shot | Supervised (3 classes) |
+| **Stimulus** | Continuous video/speech | Static images | Task labels (rest / arithmetic) |
+| **Alignment** | EEG ↔ EEG (cross-subject) | EEG ↔ DNN features | Both: EEG↔EEG + EEG↔frozen text embedding |
+| **Labels** | Unsupervised | Zero-shot | Supervised (2 classes) |
 | **Encoder** | Spatial→Temporal CNN | Temporal→Spatial CNN | Hybrid with channel attention |
 
 ## Citation

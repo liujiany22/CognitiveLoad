@@ -68,13 +68,12 @@ def prepare_data(cfg):
     cfg.n_subjects = len(unique_subs)
     cfg.n_channels = data["eeg"].shape[1]
     cfg.n_timepoints = data["eeg"].shape[2]
-    cfg.n_classes = len(np.unique(data["labels"]))
-    cfg.task_feature_dim = data["task_features"].shape[1]
+    cfg.n_classes = loader.n_classes
+    cfg.label_names = loader.label_names
     print(f"  Subjects  : {cfg.n_subjects}")
     print(f"  Channels  : {cfg.n_channels}")
     print(f"  Timepoints: {cfg.n_timepoints}")
-    print(f"  Classes   : {cfg.n_classes}")
-    print(f"  Task feat : {cfg.task_feature_dim}-d text embeddings")
+    print(f"  Classes   : {cfg.n_classes}  {cfg.label_names}")
     return data
 
 

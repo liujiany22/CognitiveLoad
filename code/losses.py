@@ -119,7 +119,7 @@ class CLIPLoss(nn.Module):
 class CogLoadLoss(nn.Module):
     """Stage-3 loss: classification CE with label smoothing."""
 
-    def __init__(self, n_classes: int = 3, label_smoothing: float = 0.05):
+    def __init__(self, n_classes: int = 2, label_smoothing: float = 0.05):
         super().__init__()
         self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
 

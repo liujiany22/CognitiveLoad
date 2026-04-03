@@ -2,17 +2,12 @@
 DualAlign-CogLoad: full model with three operating modes.
 
   Stage 1 — forward_cross_subject   : cross-subject contrastive
-  Stage 2 — forward_text_phase      : text projection shaping (NICE++ Phase A)
-             forward_eeg_phase       : EEG ↔ refined-text alignment (NICE++ Phase B)
+  Stage 2 — forward_eeg_phase       : EEG ↔ frozen-text-embedding alignment
   Stage 3 — forward (default)       : dual-branch fusion → classification
 
-The Stage-2 design follows NICE++ (NICE-LLM):
-  Phase A: TextProjector is trained so that projected text embeddings of different
-           conditions are well-separated (supervised contrastive loss on text).
-  Phase B: EEG encoder + EEG projector align with the *frozen* (detached) refined
-           text representations via CLIP-style contrastive loss.
-  Text features are pre-computed sentence-transformer embeddings and stay frozen;
-  only TextProjector is learnable on the text side (analogous to Proj_img in NICE++).
+Text features come from a frozen nn.Embedding layer indexed by label.
+No training is applied to the text side — only the EEG branch aligns
+towards these fixed anchor points in the projection space.
 """
 
 import torch
@@ -50,7 +45,7 @@ class ContrastiveProjector(nn.Module):
 
 
 class AlignmentProjector(nn.Module):
-    """Proj_eeg: EEG embedding → alignment space (NICE++ style)."""
+    """Proj_eeg: EEG embedding → alignment space."""
 
     def __init__(self, embed_dim: int, proj_dim: int, dropout: float = 0.5):
         super().__init__()
@@ -62,29 +57,6 @@ class AlignmentProjector(nn.Module):
 
     def forward(self, x):
         return self.proj(x)
-
-
-class TextProjector(nn.Module):
-    """
-    Proj_text: frozen text embedding → alignment space (analogous to NICE++ Proj_img).
-
-    In NICE++, Proj_img refines CLIP image features via image-text contrastive loss.
-    Here, TextProjector refines sentence-transformer text features via a supervised
-    contrastive loss that shapes the projection space by condition label.
-    """
-
-    def __init__(self, text_dim: int, proj_dim: int, dropout: float = 0.3):
-        super().__init__()
-        self.input_proj = (
-            nn.Linear(text_dim, proj_dim) if text_dim != proj_dim else nn.Identity()
-        )
-        self.refine = nn.Sequential(
-            ResidualMLP(proj_dim, dropout),
-            nn.LayerNorm(proj_dim),
-        )
-
-    def forward(self, x):
-        return self.refine(self.input_proj(x))
 
 
 class DualAlignModel(nn.Module):
@@ -107,16 +79,16 @@ class DualAlignModel(nn.Module):
         self.cross_encoder = EEGEncoder(**enc_kwargs)
         self.cross_projector = ContrastiveProjector(config.embed_dim, config.proj_dim)
 
-        # ── Branch 2: Stimulus-aligned encoder (NICE++ inspired) ──
+        # ── Branch 2: Stimulus-aligned encoder ──
         self.align_encoder = EEGEncoder(**enc_kwargs)
         self.align_projector = AlignmentProjector(
             config.embed_dim, config.proj_dim, dropout=0.5,
         )
-        self.text_projector = TextProjector(
-            text_dim=config.task_feature_dim,
-            proj_dim=config.proj_dim,
-            dropout=0.3,
-        )
+
+        # Frozen text embedding: each class label maps to a fixed vector
+        self.text_embedding = nn.Embedding(config.n_classes, config.proj_dim)
+        self.text_embedding.requires_grad_(False)
+
         self.logit_scale = nn.Parameter(torch.log(torch.tensor(1.0 / config.temperature)))
 
         # ── Fusion + classifier (Stage 3) ──
@@ -137,22 +109,15 @@ class DualAlignModel(nn.Module):
         feat = self.cross_encoder(eeg)
         return self.cross_projector(feat)
 
-    # ── Stage 2, Phase A: shape text projection space ──
-    def forward_text_phase(self, text_features: torch.Tensor) -> torch.Tensor:
-        """Pass frozen text embeddings through the learnable TextProjector."""
-        return self.text_projector(text_features)
-
-    # ── Stage 2, Phase B: align EEG with refined text (text detached) ──
-    def forward_eeg_phase(self, eeg: torch.Tensor, text_features: torch.Tensor):
+    # ── Stage 2: align EEG with frozen text embeddings ──
+    def forward_eeg_phase(self, eeg: torch.Tensor, labels: torch.Tensor):
         """
-        Returns (eeg_proj, text_proj_detached, logit_scale).
-        text_proj is detached — no gradient flows to TextProjector here,
-        exactly like NICE++ detaches img_features before EEG-Image loss.
+        Returns (eeg_proj, text_emb, logit_scale).
+        text_emb is from a frozen embedding — no gradient flows to it.
         """
         eeg_proj = self.align_projector(self.align_encoder(eeg))
-        with torch.no_grad():
-            text_proj = self.text_projector(text_features)
-        return eeg_proj, text_proj, self.logit_scale.exp()
+        text_emb = self.text_embedding(labels)  # already frozen
+        return eeg_proj, text_emb, self.logit_scale.exp()
 
     # ── Stage 3 / inference ──
     def forward(self, eeg: torch.Tensor) -> torch.Tensor:

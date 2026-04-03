@@ -10,8 +10,7 @@ class Config:
     n_channels: int = 32
     n_timepoints: int = 512          # 2 s @ 256 Hz
     sampling_rate: int = 256
-    n_classes: int = 3               # low / mid / high
-    task_feature_dim: int = 384
+    n_classes: int = 2
     test_subject_ratio: float = 0.2  # fraction of subjects held out for final evaluation
     val_subject_ratio: float = 0.15  # fraction of subjects for validation (early-stopping)
 

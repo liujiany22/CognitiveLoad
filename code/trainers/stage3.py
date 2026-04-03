@@ -2,8 +2,7 @@
 Stage 3 — Dual-Branch Classification Fine-tuning.
 
 Both encoders (cross-subject & stimulus-aligned) are combined: their
-embeddings are concatenated, fused through an MLP, and classified into
-cognitive-load levels (low / mid / high).
+embeddings are concatenated, fused through an MLP, and classified.
 
 The encoder weights can optionally be frozen or fine-tuned end-to-end.
 """

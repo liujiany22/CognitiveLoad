@@ -6,7 +6,8 @@ To add a new dataset
 1. Create a new file in ``data/loaders/``  (e.g. ``my_dataset.py``).
 2. Subclass :class:`BaseDatasetLoader`.
 3. Set the ``name`` class attribute to a unique identifier string.
-4. Implement :meth:`load_raw` (and optionally override :meth:`cache_tag`).
+4. Set ``n_classes`` and ``label_names`` for classification metadata.
+5. Implement :meth:`load_raw` (and optionally override :meth:`cache_tag`).
 
 The loader is registered automatically upon import — no manual
 registration is needed.
@@ -17,18 +18,16 @@ Minimal example::
 
     class MyDatasetLoader(BaseDatasetLoader):
         name = "my_dataset"
+        n_classes = 2
+        label_names = {0: "class_a", 1: "class_b"}
 
         def load_raw(self, cfg) -> dict:
             eeg = ...          # (n_trials, n_channels, n_timepoints)
             labels = ...       # (n_trials,)
             subject_ids = ...  # (n_trials,)
-            condition_ids = ...# (n_trials,)
-            task_features = ...# (n_trials, feat_dim)
             return {
                 "eeg": eeg, "labels": labels,
                 "subject_ids": subject_ids,
-                "condition_ids": condition_ids,
-                "task_features": task_features,
             }
 """
 
@@ -43,11 +42,14 @@ from .preprocessing import preprocess_eeg
 class BaseDatasetLoader(ABC):
     """Abstract base class for EEG dataset loaders.
 
-    Subclasses must set :attr:`name` and implement :meth:`load_raw`.
+    Subclasses must set :attr:`name`, :attr:`n_classes`,
+    :attr:`label_names` and implement :meth:`load_raw`.
     Caching and preprocessing are handled by :meth:`load`.
     """
 
     name: str = ""
+    n_classes: int = 2
+    label_names: dict = {}
 
     _registry: dict = {}
 
@@ -84,8 +86,6 @@ class BaseDatasetLoader(ABC):
         eeg           : np.ndarray  (n_trials, n_channels, n_timepoints) float32
         labels        : np.ndarray  (n_trials,) int64
         subject_ids   : np.ndarray  (n_trials,) int64
-        condition_ids : np.ndarray  (n_trials,) int64
-        task_features : np.ndarray  (n_trials, task_feature_dim) float32
         """
 
     def cache_tag(self, cfg) -> str:

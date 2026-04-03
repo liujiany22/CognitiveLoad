@@ -13,6 +13,8 @@ Expected layout (flat, all files in one directory):
         Subject35_1.edf
         Subject35_2.edf
         subject-info.csv
+
+Binary classification: 休息 (rest) vs 心算 (mental arithmetic).
 """
 
 import os
@@ -29,13 +31,12 @@ except ImportError:
     mne = None
 
 from data.base_loader import BaseDatasetLoader
-from data.text_embeddings import (
-    build_text_embeddings, get_description_key, get_condition_id,
-    N_CONDITIONS,
-)
 
 LABEL_REST = 0
 LABEL_ARITH = 1
+
+LABEL_NAMES = {0: "休息", 1: "心算"}
+N_CLASSES = 2
 
 
 def _read_edf(path: str) -> tuple:
@@ -73,12 +74,14 @@ def _read_subject_info(root_dir: str) -> dict:
 
 
 class EEGMATLoader(BaseDatasetLoader):
-    """PhysioNet EEGMAT dataset loader."""
+    """PhysioNet EEGMAT dataset loader — 2-class (rest / mental arithmetic)."""
 
     name = "eegmat"
+    n_classes = N_CLASSES
+    label_names = LABEL_NAMES
 
     def cache_tag(self, cfg) -> str:
-        return f"eegmat_ep{cfg.epoch_sec}s_{cfg.sampling_rate}hz_textemb"
+        return f"eegmat_ep{cfg.epoch_sec}s_{cfg.sampling_rate}hz"
 
     def load_raw(self, cfg) -> dict:
         if mne is None:
@@ -87,11 +90,6 @@ class EEGMATLoader(BaseDatasetLoader):
         root_dir = cfg.data_path
         epoch_sec = cfg.epoch_sec
         target_sfreq = float(cfg.sampling_rate)
-
-        text_emb = build_text_embeddings(lang="en", cache_dir=cfg.data_dir)
-        embed_dim = next(iter(text_emb.values())).shape[0]
-
-        subj_info = _read_subject_info(root_dir)
 
         edf_files = sorted(glob.glob(os.path.join(root_dir, "Subject*_*.edf")))
         if not edf_files:
@@ -111,13 +109,10 @@ class EEGMATLoader(BaseDatasetLoader):
         print(f"  EEGMAT: found {len(subject_ids)} subjects, "
               f"{len(edf_files)} EDF files")
 
-        all_eeg, all_labels, all_subs, all_conds, all_feats = [], [], [], [], []
+        all_eeg, all_labels, all_subs = [], [], []
         n_channels_ref = None
 
         for sid in subject_ids:
-            info = subj_info.get(sid, {"quality": 1, "n_sub": 15.0})
-            perf = info["quality"]
-
             for suffix, label in [(1, LABEL_REST), (2, LABEL_ARITH)]:
                 edf_path = file_map.get((sid, suffix))
                 if edf_path is None:
@@ -150,30 +145,17 @@ class EEGMATLoader(BaseDatasetLoader):
                 n_ep = epochs.shape[0]
 
                 for i in range(n_ep):
-                    key = get_description_key(label, i, n_ep, perf)
-                    feat = text_emb.get(key)
-                    if feat is None:
-                        feat = np.zeros(embed_dim, dtype=np.float32)
-                    cond_id = get_condition_id(label, i, n_ep, perf)
-
                     all_eeg.append(epochs[i])
                     all_labels.append(label)
                     all_subs.append(sid)
-                    all_conds.append(cond_id)
-                    all_feats.append(feat)
 
+        labels_arr = np.array(all_labels, dtype=np.int64)
         data_out = {
             "eeg": np.stack(all_eeg).astype(np.float32),
-            "labels": np.array(all_labels, dtype=np.int64),
+            "labels": labels_arr,
             "subject_ids": np.array(all_subs, dtype=np.int64),
-            "condition_ids": np.array(all_conds, dtype=np.int64),
-            "task_features": np.stack(all_feats).astype(np.float32),
         }
         print(f"  Total epochs: {len(all_eeg)}  "
-              f"(rest={sum(l == 0 for l in all_labels)}, "
-              f"arith={sum(l == 1 for l in all_labels)})")
-        cond_arr = np.array(all_conds)
-        cond_counts = {c: int((cond_arr == c).sum()) for c in range(N_CONDITIONS)}
-        print(f"  Condition distribution (9-class): {cond_counts}")
-        print(f"  Task feature dim: {embed_dim} (text embeddings)")
+              f"(rest={int((labels_arr == 0).sum())}, "
+              f"arith={int((labels_arr == 1).sum())})")
         return data_out

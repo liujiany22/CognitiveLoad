@@ -82,47 +82,89 @@ ChannelAttention (SE-style)
 pip install -r requirements.txt
 ```
 
-### Run with synthetic data
+### Run with EEGMAT dataset
 
 ```bash
 # Full pipeline (all 3 stages)
-python main.py
-
-# Quick test with fewer subjects and epochs
-python main.py --n_subjects 8 --stage1_epochs 10 --stage2_epochs 10 --stage3_epochs 10
+python main.py --data_source eegmat --data_path datasets/eegmat
 
 # Run only Stage 3 (loads pre-trained checkpoints)
-python main.py --stage 3
+python main.py --data_source eegmat --data_path datasets/eegmat --stage 3
 
 # Freeze encoders during fine-tuning
-python main.py --freeze_encoders
+python main.py --data_source eegmat --data_path datasets/eegmat --freeze_encoders
+
+# Custom epoch length and fewer training epochs
+python main.py --data_source eegmat --data_path datasets/eegmat \
+    --epoch_sec 4.0 --stage1_epochs 10 --stage2_epochs 10 --stage3_epochs 10
 ```
 
-## Using Real Datasets
+## Adding a New Dataset
 
-The framework is designed to work with any EEG cognitive load dataset. Two recommended public datasets:
+The framework uses a **class-based registry** pattern. To add a new EEG dataset:
 
-### HHU N-back EEG Dataset
-- 10 subjects, 56 channels, 1000 Hz
-- 4 difficulty levels (0/1/2/3-back) — use 0/1/2-back for 3 classes
-- [IEEE DataPort](https://ieee-dataport.org/documents/hhu-n-back-task-eeg-dataset)
+### 1. Create a loader file
 
-### STEW Dataset
-- 48 subjects, 14 channels, 128 Hz
-- Workload ratings 1–9 (bin into low/mid/high)
-- [IEEE DataPort](https://ieee-dataport.org/open-access/stew-simultaneous-task-eeg-workload-dataset)
-
-To use a real dataset, implement a loader in `data/` that returns the same dictionary format as `generate_cognitive_load_data()`:
+Create a new Python file in `data/loaders/` (e.g. `data/loaders/my_dataset.py`):
 
 ```python
-{
-    "eeg":           np.ndarray  # (n_trials, n_channels, n_timepoints)
-    "labels":        np.ndarray  # (n_trials,)  — 0/1/2
-    "subject_ids":   np.ndarray  # (n_trials,)
-    "condition_ids": np.ndarray  # (n_trials,)
-    "task_features": np.ndarray  # (n_trials, task_feature_dim)
-}
+import numpy as np
+from data.base_loader import BaseDatasetLoader
+
+
+class MyDatasetLoader(BaseDatasetLoader):
+    name = "my_dataset"                      # unique identifier
+
+    def cache_tag(self, cfg) -> str:
+        """Optional: custom cache filename to avoid collisions."""
+        return f"my_dataset_{cfg.epoch_sec}s"
+
+    def load_raw(self, cfg) -> dict:
+        """Load raw data and return the standardised dict."""
+        root = cfg.data_path                 # --data_path from CLI
+        # ... your loading logic ...
+        return {
+            "eeg":           eeg,            # (n_trials, n_channels, n_timepoints) float32
+            "labels":        labels,         # (n_trials,) int64
+            "subject_ids":   subject_ids,    # (n_trials,) int64
+            "condition_ids": condition_ids,  # (n_trials,) int64
+            "task_features": task_features,  # (n_trials, feat_dim) float32
+        }
 ```
+
+### 2. Run
+
+```bash
+python main.py --data_source my_dataset --data_path /path/to/data
+```
+
+The loader is auto-discovered — no manual registration code needed. Just drop the file into `data/loaders/` and it will be available.
+
+### Standard data dict format
+
+All loaders must return a dict with these keys:
+
+| Key | Shape | Dtype | Description |
+|-----|-------|-------|-------------|
+| `eeg` | `(N, C, T)` | float32 | EEG epochs |
+| `labels` | `(N,)` | int64 | Class labels (0-indexed) |
+| `subject_ids` | `(N,)` | int64 | Subject identifiers |
+| `condition_ids` | `(N,)` | int64 | Fine-grained condition IDs for contrastive pairing |
+| `task_features` | `(N, D)` | float32 | Task-condition feature vectors (e.g. text embeddings) |
+
+## Built-in Datasets
+
+### EEGMAT (PhysioNet)
+- 36 subjects, 19 channels, 500 Hz (resampled to 256 Hz)
+- 2 classes: rest vs. mental arithmetic
+- [PhysioNet page](https://physionet.org/content/eegmat/1.0.0/)
+
+### Recommended additional datasets
+
+| Dataset | Subjects | Channels | Classes | Link |
+|---------|----------|----------|---------|------|
+| HHU N-back | 10 | 56 | 4 (0/1/2/3-back) | [IEEE DataPort](https://ieee-dataport.org/documents/hhu-n-back-task-eeg-dataset) |
+| STEW | 48 | 14 | continuous (bin to 3) | [IEEE DataPort](https://ieee-dataport.org/open-access/stew-simultaneous-task-eeg-workload-dataset) |
 
 ## Project Structure
 
@@ -133,9 +175,13 @@ code/
 ├── losses.py              # InfoNCE, CLIP, CE losses
 ├── utils.py               # Metrics, seeding, helpers
 ├── data/
-│   ├── simulate.py        # Synthetic EEG generator
+│   ├── base_loader.py     # BaseDatasetLoader ABC + registry
 │   ├── preprocessing.py   # Bandpass, normalise, MVNN
-│   └── dataset.py         # PyTorch datasets & loaders
+│   ├── text_embeddings.py # Text-based task feature encoder
+│   ├── dataset.py         # PyTorch datasets & loaders
+│   └── loaders/           # ← drop new dataset loaders here
+│       ├── __init__.py    # Auto-discovery of loader modules
+│       └── eegmat.py      # EEGMAT dataset loader
 ├── models/
 │   ├── encoder.py         # EEG encoder + channel attention
 │   └── dual_align.py      # Full DualAlign model

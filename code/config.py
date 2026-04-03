@@ -1,4 +1,4 @@
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import os
 import torch
 
@@ -11,8 +11,7 @@ class Config:
     n_timepoints: int = 512          # 2 s @ 256 Hz
     sampling_rate: int = 256
     n_classes: int = 3               # low / mid / high
-    n_trials_per_level: int = 40
-    task_feature_dim: int = 16
+    task_feature_dim: int = 384
     test_subject_ratio: float = 0.2  # fraction of subjects held out for final evaluation
     val_subject_ratio: float = 0.15  # fraction of subjects for validation (early-stopping)
 
@@ -61,9 +60,9 @@ class Config:
     patience: int = 15
 
     # ── Data source ──
-    data_source: str = "simulate"    # simulate | eegmat
-    real_data_path: str = ""
-    epoch_sec: float = 2.0           # epoch length (seconds) for real data
+    data_source: str = "eegmat"      # registered loader name
+    data_path: str = ""              # root directory of the dataset
+    epoch_sec: float = 2.0           # epoch length (seconds) for epoching
 
     def __post_init__(self):
         os.makedirs(self.save_dir, exist_ok=True)

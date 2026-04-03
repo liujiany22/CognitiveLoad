@@ -7,25 +7,21 @@ Three-stage training:
   3. Dual-branch fusion classification fine-tuning
 
 Usage:
-    python main.py                          # synthetic data, full pipeline
+    python main.py --data_source eegmat --data_path datasets/eegmat
     python main.py --stage 3                # run only stage 3
-    python main.py --n_subjects 10 --stage1_epochs 50
+    python main.py --stage1_epochs 50
 """
 
 import argparse
 import json
 import os
-import sys
 
 import numpy as np
 import torch
 
 from config import Config
 from utils import set_seed, compute_metrics
-from data import (
-    generate_cognitive_load_data, preprocess_eeg,
-    build_dataloaders, load_eegmat,
-)
+from data import BaseDatasetLoader, build_dataloaders
 from models import DualAlignModel
 from trainers import Stage1Trainer, Stage2Trainer, Stage3Trainer
 
@@ -35,23 +31,19 @@ def parse_args():
     parser.add_argument("--stage", type=int, default=0,
                         help="Run only this stage (0 = all)")
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--n_subjects", type=int, default=20)
-    parser.add_argument("--n_channels", type=int, default=32)
-    parser.add_argument("--n_timepoints", type=int, default=512)
-    parser.add_argument("--n_trials_per_level", type=int, default=40)
     parser.add_argument("--stage1_epochs", type=int, default=100)
     parser.add_argument("--stage2_epochs", type=int, default=80)
     parser.add_argument("--stage3_epochs", type=int, default=60)
     parser.add_argument("--device", type=str, default="")
     parser.add_argument("--freeze_encoders", action="store_true",
                         help="Freeze encoder weights in Stage 3")
-    parser.add_argument("--data_source", type=str, default="simulate",
-                        choices=["simulate", "eegmat"],
-                        help="Data source: simulate | eegmat")
+    parser.add_argument("--data_source", type=str, default="eegmat",
+                        help="Registered dataset loader name "
+                             f"(available: {BaseDatasetLoader.available_datasets()})")
     parser.add_argument("--data_path", type=str, default="datasets/eegmat",
-                        help="Path to real dataset root")
+                        help="Root directory of the dataset")
     parser.add_argument("--epoch_sec", type=float, default=2.0,
-                        help="Epoch length in seconds (for real data)")
+                        help="Epoch length in seconds")
     return parser.parse_args()
 
 
@@ -62,78 +54,12 @@ def build_config(args) -> Config:
             setattr(cfg, k, v)
     if args.device:
         cfg.device = args.device
-    if args.data_source:
-        cfg.data_source = args.data_source
-    if args.data_path:
-        cfg.real_data_path = args.data_path
-    if args.epoch_sec:
-        cfg.epoch_sec = args.epoch_sec
     return cfg
 
 
-def prepare_data_simulate(cfg):
-    tag = (f"s{cfg.n_subjects}_c{cfg.n_channels}_t{cfg.n_timepoints}"
-           f"_tr{cfg.n_trials_per_level}_cl{cfg.n_classes}")
-    cache_path = os.path.join(cfg.data_dir, f"synthetic_{tag}.npz")
-
-    if os.path.exists(cache_path):
-        print("Loading cached synthetic data …")
-        loaded = np.load(cache_path, allow_pickle=False)
-        data = {k: loaded[k] for k in loaded.files}
-    else:
-        print("Generating synthetic cognitive-load EEG data …")
-        data = generate_cognitive_load_data(
-            n_subjects=cfg.n_subjects,
-            n_channels=cfg.n_channels,
-            n_timepoints=cfg.n_timepoints,
-            sampling_rate=cfg.sampling_rate,
-            n_trials_per_level=cfg.n_trials_per_level,
-            n_levels=cfg.n_classes,
-            task_feature_dim=cfg.task_feature_dim,
-            seed=cfg.seed,
-        )
-        np.savez_compressed(cache_path, **data)
-        print(f"  cached to {cache_path}")
-
-    print("Preprocessing EEG …")
-    data["eeg"] = preprocess_eeg(
-        data["eeg"], fs=cfg.sampling_rate, bandpass=True, normalize="zscore",
-    )
-    return data
-
-
-def prepare_data_eegmat(cfg):
-    cache_path = os.path.join(
-        cfg.data_dir, f"eegmat_ep{cfg.epoch_sec}s_{cfg.sampling_rate}hz_textemb.npz",
-    )
-
-    if os.path.exists(cache_path):
-        print("Loading cached EEGMAT data …")
-        loaded = np.load(cache_path, allow_pickle=False)
-        data = {k: loaded[k] for k in loaded.files}
-    else:
-        print(f"Loading EEGMAT from {cfg.real_data_path} …")
-        data = load_eegmat(
-            root_dir=cfg.real_data_path,
-            epoch_sec=cfg.epoch_sec,
-            target_sfreq=float(cfg.sampling_rate),
-            cache_dir=cfg.data_dir,
-        )
-        np.savez_compressed(cache_path, **data)
-        print(f"  cached to {cache_path}")
-
-    print("Preprocessing EEG …")
-    data["eeg"] = preprocess_eeg(
-        data["eeg"], fs=cfg.sampling_rate, bandpass=True, normalize="zscore",
-    )
-    return data
-
-
 def prepare_data(cfg):
-    if cfg.data_source == "eegmat":
-        data = prepare_data_eegmat(cfg)
-    else:
-        data = prepare_data_simulate(cfg)
+    loader = BaseDatasetLoader.get_loader(cfg.data_source)
+    data = loader.load(cfg)
 
     print(f"  EEG shape : {data['eeg'].shape}")
     print(f"  Labels    : {np.bincount(data['labels'])}")

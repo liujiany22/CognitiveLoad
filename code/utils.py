@@ -52,6 +52,46 @@ def compute_metrics(y_true, y_pred, label_names=None):
     }
 
 
+def lds_smooth(sequence: np.ndarray) -> np.ndarray:
+    """Linear Dynamical System (Kalman filter) smoothing (CLISA-faithful).
+
+    Smooths a time-series of feature vectors along the temporal axis using
+    a scalar Kalman filter applied independently per feature dimension.
+
+    Args:
+        sequence: (n_timesteps, n_features) — consecutive feature vectors.
+    Returns:
+        Smoothed array with the same shape.
+    """
+    ave = np.mean(sequence, axis=0)
+    u0 = ave
+    X = sequence.T                            # (n_features, n_timesteps)
+
+    V0 = 0.01
+    A = 1
+    T_noise = 0.0001
+    C = 1
+    sigma = 1
+
+    m, n = X.shape
+    P = np.zeros((m, n))
+    u = np.zeros((m, n))
+    V = np.zeros((m, n))
+    K = np.zeros((m, n))
+
+    K[:, 0] = (V0 * C / (C * V0 * C + sigma)) * np.ones(m)
+    u[:, 0] = u0 + K[:, 0] * (X[:, 0] - C * u0)
+    V[:, 0] = (np.ones(m) - K[:, 0] * C) * V0
+
+    for i in range(1, n):
+        P[:, i - 1] = A * V[:, i - 1] * A + T_noise
+        K[:, i] = P[:, i - 1] * C / (C * P[:, i - 1] * C + sigma)
+        u[:, i] = A * u[:, i - 1] + K[:, i] * (X[:, i] - C * A * u[:, i - 1])
+        V[:, i] = (np.ones(m) - K[:, i] * C) * P[:, i - 1]
+
+    return u.T                                 # (n_timesteps, n_features)
+
+
 class EarlyStopping:
     def __init__(self, patience: int = 15, mode: str = "min", delta: float = 0.0):
         self.patience = patience

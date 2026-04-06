@@ -1,6 +1,6 @@
 """Shared utilities for the DualAlign-CogLoad training pipeline.
 
-Every stage script (train_stage1/2/3, evaluate) imports from here
+Every stage script (train, evaluate) imports from here
 to avoid duplicating data-loading and config-building logic.
 """
 
@@ -53,6 +53,12 @@ def setup(args):
     -------
     cfg : Config
     loaders : dict[str, DataLoader]
+        DataLoaders for Stage 1 (``pair``) and Stage 2 (``train``, ``val``).
+        Stage 3 builds its own DE-feature loaders via
+        :meth:`Stage3Trainer.prepare_de_loaders`.
+    split_info : dict
+        ``{"data", "train_subs", "val_subs", "test_subs"}`` — raw data
+        dict and subject-ID lists needed by Stage 3 pre-extraction.
     """
     cfg = build_config(args)
     set_seed(cfg.seed)
@@ -86,7 +92,6 @@ def setup(args):
     train_subs = sorted(all_subs[n_test + n_val:])
     print(f"  Split    : train {train_subs}  |  val {val_subs}  |  test {test_subs}")
 
-    # Compute inverse-frequency class weights from training split
     train_mask = np.isin(data["subject_ids"], train_subs)
     train_labels = data["labels"][train_mask]
     counts = np.bincount(train_labels, minlength=cfg.n_classes).astype(np.float64)
@@ -94,7 +99,14 @@ def setup(args):
     print(f"  Weights  : {[f'{w:.3f}' for w in cfg.class_weights]}")
 
     loaders = build_dataloaders(data, train_subs, val_subs, test_subs, cfg)
-    return cfg, loaders
+
+    split_info = {
+        "data": data,
+        "train_subs": train_subs,
+        "val_subs": val_subs,
+        "test_subs": test_subs,
+    }
+    return cfg, loaders, split_info
 
 
 def create_run_dir(base_dir: str) -> str:

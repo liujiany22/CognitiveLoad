@@ -25,9 +25,11 @@ Minimal example::
             eeg = ...          # (n_trials, n_channels, n_timepoints)
             labels = ...       # (n_trials,)
             subject_ids = ...  # (n_trials,)
+            positions = ...    # (n_trials,) — temporal position per trial
             return {
                 "eeg": eeg, "labels": labels,
                 "subject_ids": subject_ids,
+                "positions": positions,
             }
 """
 
@@ -86,6 +88,12 @@ class BaseDatasetLoader(ABC):
         eeg           : np.ndarray  (n_trials, n_channels, n_timepoints) float32
         labels        : np.ndarray  (n_trials,) int64
         subject_ids   : np.ndarray  (n_trials,) int64
+        positions     : np.ndarray  (n_trials,) int64
+            Temporal position index within each (subject, condition) group.
+            Used by Stage 1 cross-subject pairing and Stage 3 DE
+            sub-segmentation / LDS ordering.  For sliding-window
+            epoching, position = epoch index (0, 1, 2, …); for
+            event-related datasets, use sequential trial indices.
         """
 
     def cache_tag(self, cfg) -> str:

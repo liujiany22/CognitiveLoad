@@ -1,7 +1,8 @@
 from .preprocessing import preprocess_eeg
 from .dataset import (
-    CogLoadDataset,
+    EEGDataset,
     CrossSubjectPairDataset,
+    DEFeatureDataset,
     build_dataloaders,
 )
 from .base_loader import BaseDatasetLoader

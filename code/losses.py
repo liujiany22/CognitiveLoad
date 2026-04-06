@@ -3,7 +3,7 @@ Loss functions for the three training stages.
 
 Stage 1  — InfoNCELoss: cross-subject contrastive (CLISA-style)
 Stage 2  — CLIPLoss:    EEG ↔ frozen-text bidirectional alignment
-Stage 3  — CogLoadLoss: classification CE with label smoothing
+Stage 3  — ClassificationLoss: CE with label smoothing
 """
 
 import torch
@@ -15,22 +15,43 @@ class InfoNCELoss(nn.Module):
     """
     NT-Xent loss for cross-subject contrastive learning (CL-SSTER style).
 
-    Positive pair: (z_a[i], z_b[i]) — same condition, different subjects.
-    Negatives:     all other samples in the batch.
+    Positive pair: (z_a[i], z_b[i]) — same position, different subjects.
+    Negatives:     only *different-condition* samples.
+
+    When ``cond_labels`` is provided, same-condition pairs (excluding the
+    positive) are masked out of the denominator so they act as neither
+    positives nor negatives.  This avoids pushing apart samples that
+    share the same cognitive state but differ only in temporal position.
     """
 
     def __init__(self, temperature: float = 0.07):
         super().__init__()
         self.temperature = temperature
 
-    def forward(self, z_a: torch.Tensor, z_b: torch.Tensor) -> torch.Tensor:
+    def forward(self, z_a: torch.Tensor, z_b: torch.Tensor,
+                cond_labels: torch.Tensor | None = None) -> torch.Tensor:
         z_a = F.normalize(z_a, dim=1)
         z_b = F.normalize(z_b, dim=1)
         B = z_a.size(0)
 
-        features = torch.cat([z_a, z_b], dim=0)
-        sim = features @ features.T / self.temperature
+        features = torch.cat([z_a, z_b], dim=0)           # (2B, D)
+        sim = features @ features.T / self.temperature     # (2B, 2B)
         sim.fill_diagonal_(-1e9)
+
+        if cond_labels is not None:
+            # cond_labels: (B,) — same order for z_a and z_b
+            cond_all = cond_labels.repeat(2)               # (2B,)
+            same_cond = cond_all.unsqueeze(0) == cond_all.unsqueeze(1)
+
+            pos_mask = torch.zeros(2 * B, 2 * B, dtype=torch.bool,
+                                   device=z_a.device)
+            idx = torch.arange(B, device=z_a.device)
+            pos_mask[idx, idx + B] = True
+            pos_mask[idx + B, idx] = True
+
+            # Exclude same-condition non-positive pairs from the denominator
+            exclude = same_cond & ~pos_mask
+            sim = sim.masked_fill(exclude, -1e9)
 
         labels = torch.cat([
             torch.arange(B, 2 * B, device=z_a.device),
@@ -42,50 +63,6 @@ class InfoNCELoss(nn.Module):
         with torch.no_grad():
             preds = sim.argmax(dim=1)
             acc = (preds == labels).float().mean()
-
-        return loss, acc
-
-
-class SupConLoss(nn.Module):
-    """
-    Supervised contrastive loss (Khosla et al., 2020).
-
-    All samples sharing the same label form positive pairs; the rest
-    are negatives.  Returns (loss, nn_acc) where nn_acc is the
-    nearest-neighbour retrieval accuracy.
-    """
-
-    def __init__(self, temperature: float = 0.07):
-        super().__init__()
-        self.temperature = temperature
-
-    def forward(self, features: torch.Tensor, labels: torch.Tensor):
-        features = F.normalize(features, dim=1)
-        B = features.size(0)
-        device = features.device
-
-        sim = features @ features.T / self.temperature
-
-        # positive mask: same label, exclude self
-        label_col = labels.unsqueeze(1)
-        pos_mask = (label_col == label_col.T).float()
-        pos_mask.fill_diagonal_(0)
-
-        n_pos = pos_mask.sum(dim=1)
-        has_pos = n_pos > 0
-
-        # log-softmax over all non-self entries
-        self_mask = torch.eye(B, device=device)
-        logits = sim - 1e9 * self_mask
-        log_prob = logits - torch.logsumexp(logits, dim=1, keepdim=True)
-
-        mean_log_prob = (pos_mask * log_prob).sum(dim=1) / (n_pos + 1e-8)
-        loss = -mean_log_prob[has_pos].mean()
-
-        with torch.no_grad():
-            sim_nn = sim.clone()
-            sim_nn.fill_diagonal_(-1e9)
-            acc = (labels[sim_nn.argmax(dim=1)] == labels).float().mean()
 
         return loss, acc
 
@@ -118,8 +95,8 @@ class CLIPLoss(nn.Module):
         return loss, acc
 
 
-class CogLoadLoss(nn.Module):
-    """Stage-3 loss: classification CE with label smoothing and optional class balancing."""
+class ClassificationLoss(nn.Module):
+    """Classification CE with label smoothing and optional class balancing."""
 
     def __init__(self, n_classes: int = 2, label_smoothing: float = 0.05,
                  class_weights: list[float] | None = None):

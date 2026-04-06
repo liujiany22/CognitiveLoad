@@ -12,7 +12,7 @@ A three-stage deep learning framework that combines **cross-subject contrastive 
 |-----------|----------|
 | EEG varies across individuals | **Stage 1** learns a shared cross-subject representation via contrastive learning (CL-SSTER style) |
 | Need to capture task-specific brain responses | **Stage 2** aligns EEG embeddings with frozen text anchors via CLIP-style contrastive loss |
-| Must predict cognitive load robustly | **Stage 3** fuses both representations and fine-tunes a classifier |
+| Must predict cognitive load robustly | **Stage 3** freezes encoders, extracts DE features from Stage-1 encoder, trains a shallow MLP classifier (CLISA-style) |
 
 ## Architecture
 
@@ -24,28 +24,48 @@ A three-stage deep learning framework that combines **cross-subject contrastive 
                 ┌───────────────┴───────────────┐
                 ▼                               ▼
    ┌────────────────────┐          ┌────────────────────┐
-   │  Cross-Subject     │          │  Stimulus-Aligned   │
-   │  Encoder (Stage 1) │          │  Encoder (Stage 2)  │
-   │  + InfoNCE loss    │          │  + CLIP loss         │
-   └────────┬───────────┘          └────────┬───────────┘
-            │ embed_dim                     │ embed_dim
-            └───────────┬───────────────────┘
-                        ▼
-              ┌──────────────────┐
-              │  Fusion MLP      │
-              │  concat → dense  │
-              └────────┬─────────┘
-                       ▼
-              ┌──────────────────┐
-              │  Classifier      │
-              │  → 2 classes     │
-              └──────────────────┘
+   │  CrossEncoder       │          │  AlignEncoder       │
+   │  (Stage 1: InfoNCE) │          │  (Stage 2: CLIP)    │
+   └────────┬───────────┘          └────────────────────┘
+            │
+            │  Stage 3 uses CrossEncoder only:
+            │  5s epoch → 5×1s sub-windows → encoder → DE
+            ▼
+   ┌──────────────────────┐
+   │  Differential Entropy │
+   │  var(dim=time) → log  │
+   │  → (B, n_tf × n_sf)  │
+   └────────┬──────────────┘
+            ▼
+   ┌──────────────────────┐
+   │  normTrain (z-score)  │
+   │  + LDS Kalman smooth  │
+   └────────┬──────────────┘
+            ▼
+   ┌──────────────────────┐
+   │  3-layer MLP          │
+   │  256 → 30 → 30 → C   │
+   └──────────────────────┘
 ```
 
-### EEG Encoder (shared architecture, separate weights)
+### CrossEncoder (Stage 1 — CLISA-style)
 
 ```
-ChannelAttention (SE-style)
+StratifiedLayerNorm (optional, 'initial')
+  → SpatialConv: Conv2d(1, 16, (C, 1))
+  → Permute → TemporalConv: Conv2d(1, 16, (1, 60), same-pad)
+  → ELU → AvgPool(1, 30)
+  → StratifiedLayerNorm (optional, 'middle1')
+  → DepthSpatialConv (grouped) → ELU
+  → DepthTemporalConv (grouped) → ELU
+  → StratifiedLayerNorm (optional, 'middle2')
+  → Flatten → out_dim
+```
+
+### AlignEncoder (Stage 2 — EEGNet/ShallowConvNet-style)
+
+```
+ChannelAttention (SE-style, optional)
   → TemporalConv (1→40 filters, k=25)
   → BatchNorm → ELU → AvgPool
   → SpatialConv (40→40, collapses channels)
@@ -69,12 +89,16 @@ ChannelAttention (SE-style)
 - Initialised from Stage 1 weights (transfer learning)
 - Text embedding is **not trained** — only the EEG branch is updated
 
-### Stage 3 — Classification Fine-tuning
+### Stage 3 — Classification (CLISA-style)
 
-- Concatenates embeddings from both branches
-- MLP fusion → 2-class softmax
-- **Loss**: cross-entropy with label smoothing
-- No text features at inference — pure EEG classification
+- Freezes both encoders; only trains a shallow MLP classifier
+- **DE extraction window**: re-segments each 5 s epoch into 1 s sub-windows (`de_extract_sec`), de-duplicates overlapping segments, then runs the frozen CrossEncoder on each 1 s window to extract intermediate features (TemporalConv output before ELU)
+- Computes **Differential Entropy** (DE) along time: `0.5 * log(2πe * var)`
+- **normTrain**: z-score normalises the DE feature matrix using training-set mean/var (per-feature dimension), matching CLISA's `normTrain` step
+- **LDS smoothing**: applies a scalar Kalman filter (Linear Dynamical System) per-feature along consecutive 1 s windows within each (subject, condition) group, matching CLISA's `smooth_lds.py`
+- DE features (n_tf × n_sf = 256-d) feed a 3-layer MLP (256 → 30 → 30 → C)
+- **Loss**: plain cross-entropy (no label smoothing)
+- **Optimizer**: Adam + StepLR (matches CLISA)
 
 ## Quick Start
 
@@ -84,20 +108,16 @@ ChannelAttention (SE-style)
 pip install -r requirements.txt
 ```
 
-### Training (step by step)
-
-Each stage is a standalone script.  Run them in order:
+### Training
 
 ```bash
-# Step 1 — Cross-subject contrastive pre-training
-#   Creates a timestamped run directory (e.g. checkpoints/20260404_1523/)
-python train_stage1.py
+# Full pipeline (stages 1 → 2 → 3)
+python train.py --stage all
 
-# Step 2 — Stimulus-task alignment (pass the run dir from step 1)
-python train_stage2.py --run_dir checkpoints/20260404_1523
-
-# Step 3 — Classification fine-tuning
-python train_stage3.py --run_dir checkpoints/20260404_1523
+# Or run each stage individually:
+python train.py --stage 1                                      # creates run dir
+python train.py --stage 2 --run_dir checkpoints/20260404_1523  # needs stage1_best.pt
+python train.py --stage 3 --run_dir checkpoints/20260404_1523  # needs stage2_best.pt
 
 # Evaluate on held-out test set
 python evaluate.py --run_dir checkpoints/20260404_1523
@@ -107,22 +127,19 @@ python evaluate.py --run_dir checkpoints/20260404_1523
 
 ```bash
 # Custom dataset location / epoch length / fewer epochs
-python train_stage1.py --data_path /my/data --epoch_sec 4.0 --stage1_epochs 30
+python train.py --stage 1 --data_path /my/data --epoch_sec 4.0 --stage1_epochs 30
 
-# Freeze encoders during Stage 3
-python train_stage3.py --run_dir checkpoints/20260404_1523 --freeze_encoders
+# Stage 3 always freezes encoders (CLISA-style); just run:
+python train.py --stage 3 --run_dir checkpoints/20260404_1523
 ```
 
-### Ablation experiments
+### Ablation: skip Stage 2
 
 ```bash
-# Stage-1 features only (automatically skips Stage-2 weights)
-python train_stage3.py --run_dir checkpoints/20260404_1523 --ablation cross_only
+# Skip Stage 2 entirely — go directly from Stage 1 to Stage 3
+python train.py --stage 3 --run_dir checkpoints/20260404_1523 --ablation cross_only
 
-# Stage-2 features only
-python train_stage3.py --run_dir checkpoints/20260404_1523 --ablation align_only
-
-# Evaluate an ablation variant
+# Evaluate the cross_only variant
 python evaluate.py --run_dir checkpoints/20260404_1523 --ablation cross_only
 ```
 
@@ -156,13 +173,14 @@ class MyDatasetLoader(BaseDatasetLoader):
             "eeg":           eeg,            # (n_trials, n_channels, n_timepoints) float32
             "labels":        labels,         # (n_trials,) int64
             "subject_ids":   subject_ids,    # (n_trials,) int64
+            "positions":     positions,      # (n_trials,) int64 — epoch index per trial
         }
 ```
 
 ### 2. Run
 
 ```bash
-python main.py --data_source my_dataset --data_path /path/to/data
+python train.py --stage all --data_source my_dataset --data_path /path/to/data
 ```
 
 The loader is auto-discovered — no manual registration code needed. Just drop the file into `data/loaders/` and it will be available.
@@ -176,6 +194,7 @@ All loaders must return a dict with these keys:
 | `eeg` | `(N, C, T)` | float32 | EEG epochs |
 | `labels` | `(N,)` | int64 | Class labels (0-indexed) |
 | `subject_ids` | `(N,)` | int64 | Subject identifiers |
+| `positions` | `(N,)` | int64 | Temporal position index within each (subject, condition) group — used by Stage 1 cross-subject pairing and Stage 3 DE sub-segmentation / LDS ordering |
 
 Additionally, set the `n_classes` and `label_names` class attributes on the loader.
 
@@ -197,26 +216,25 @@ Additionally, set the `n_classes` and `label_names` class attributes on the load
 
 ```
 code/
-├── train_stage1.py        # Entry point — Stage 1 pre-training
-├── train_stage2.py        # Entry point — Stage 2 alignment
-├── train_stage3.py        # Entry point — Stage 3 fine-tuning
-├── evaluate.py            # Entry point — test-set evaluation
-├── pipeline.py            # Shared setup (config, data, splits)
+├── train.py               # Unified training (--stage 1/2/3/all)
+├── evaluate.py            # Test-set evaluation
+├── cli.py                 # Shared setup (config, data, splits)
 ├── config.py              # All hyperparameters
 ├── losses.py              # InfoNCE, CLIP, CE losses
-├── utils.py               # Metrics, seeding, helpers
+├── utils.py               # Metrics, LDS smoothing, seeding, helpers
 ├── data/
 │   ├── base_loader.py     # BaseDatasetLoader ABC + registry
 │   ├── preprocessing.py   # Bandpass, normalise, MVNN
-│   ├── text_embeddings.py # (placeholder — text logic lives in loaders)
-│   ├── dataset.py         # PyTorch datasets & loaders
+│   ├── dataset.py         # PyTorch datasets (EEG, cross-pair, DE-feature) & loaders
 │   └── loaders/           # ← drop new dataset loaders here
 │       ├── __init__.py    # Auto-discovery of loader modules
 │       └── eegmat.py      # EEGMAT dataset loader
 ├── models/
-│   ├── encoder.py         # EEG encoder + channel attention
-│   └── dual_align.py      # Full DualAlign model
+│   ├── cross_encoder.py   # CrossEncoder + StratifiedLayerNorm + DifferentialEntropy
+│   ├── align_encoder.py   # AlignEncoder + channel attention
+│   └── dual_align.py      # DualAlign model (Stage 1/2/3 forward paths)
 ├── trainers/
+│   ├── base.py            # BaseTrainer (template-method pattern)
 │   ├── stage1.py          # Cross-subject pre-training
 │   ├── stage2.py          # Stimulus alignment
 │   └── stage3.py          # Classification fine-tuning

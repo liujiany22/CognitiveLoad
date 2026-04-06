@@ -6,8 +6,8 @@ import os
 
 import torch
 
-from pipeline import add_common_args, setup
-from models import DualAlignModel
+from cli import add_common_args, setup
+from models import DualAlign
 from trainers import Stage3Trainer
 
 
@@ -18,18 +18,18 @@ def main():
     parser.add_argument("--run_dir", type=str, required=True,
                         help="Run directory containing stage3_best*.pt")
     parser.add_argument("--ablation", type=str, default="",
-                        choices=list(DualAlignModel.branch_modes()),
-                        help="Feature-selection ablation mode")
+                        choices=["", "cross_only"],
+                        help="cross_only: skip Stage 2, load stage1_best.pt directly")
     args = parser.parse_args()
 
-    cfg, loaders = setup(args)
+    cfg, loaders, split_info = setup(args)
 
     tag = f"_{cfg.ablation}" if cfg.ablation else ""
     ckpt_path = os.path.join(args.run_dir, f"stage3_best{tag}.pt")
     if not os.path.exists(ckpt_path):
         raise SystemExit(f"Error: checkpoint not found: {ckpt_path}")
 
-    model = DualAlignModel(cfg)
+    model = DualAlign(cfg)
     model.load_compatible_state_dict(
         torch.load(ckpt_path, map_location=cfg.device, weights_only=True),
     )
@@ -40,7 +40,14 @@ def main():
     print("EVALUATION")
     print("=" * 60)
 
-    metrics = Stage3Trainer(model, cfg).evaluate(loaders["test"])
+    trainer = Stage3Trainer(model, cfg)
+    de_loaders = trainer.prepare_de_loaders(
+        split_info["data"],
+        split_info["train_subs"],
+        split_info["val_subs"],
+        split_info["test_subs"],
+    )
+    metrics = trainer.evaluate(de_loaders["test"])
 
     print(metrics["report"])
     print(f"Accuracy          : {metrics['accuracy']:.4f}")

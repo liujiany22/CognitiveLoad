@@ -22,7 +22,12 @@ class Stage3Trainer:
         self.model = model
         self.config = config
         self.device = config.device
-        self.criterion = CogLoadLoss(n_classes=config.n_classes)
+        self.criterion = CogLoadLoss(
+            n_classes=config.n_classes,
+        )
+
+        tag = f"_{config.ablation}" if config.ablation else ""
+        self._ckpt_path = f"{config.save_dir}/stage3_best{tag}.pt"
 
         if freeze_encoders:
             for p in model.cross_encoder.parameters():
@@ -41,7 +46,8 @@ class Stage3Trainer:
 
     def train(self, train_loader, val_loader):
         self.model.to(self.device)
-        best_acc = 0.0
+        self.criterion.to(self.device)
+        best_bal_acc = 0.0
 
         for epoch in range(1, self.config.stage3_epochs + 1):
             self.model.train()
@@ -71,33 +77,36 @@ class Stage3Trainer:
             self.scheduler.step()
 
             val_metrics = self.evaluate(val_loader)
-            val_acc = val_metrics["accuracy"]
+            val_bal_acc = val_metrics["balanced_accuracy"]
 
             print(
                 f"  Stage3 Epoch {epoch:3d}  |  "
                 f"train-loss {loss_meter.avg:.4f}  |  "
                 f"train-acc {acc_meter.avg:.4f}  |  "
-                f"val-acc {val_acc:.4f}  |  "
-                f"val-f1 {val_metrics['f1_macro']:.4f}"
+                f"val-bal-acc {val_bal_acc:.4f}  |  "
+                f"val-f1 {val_metrics['f1_macro']:.4f}  |  "
+                f"val-kappa {val_metrics['kappa']:.4f}"
             )
 
-            if val_acc > best_acc:
-                best_acc = val_acc
+            if val_bal_acc > best_bal_acc:
+                best_bal_acc = val_bal_acc
+                torch.save(self.model.state_dict(), self._ckpt_path)
+
+            every = self.config.ckpt_every
+            if every > 0 and epoch % every == 0:
+                tag = f"_{self.config.ablation}" if self.config.ablation else ""
                 torch.save(
                     self.model.state_dict(),
-                    f"{self.config.save_dir}/stage3_best.pt",
+                    f"{self.config.save_dir}/stage3_epoch_{epoch}{tag}.pt",
                 )
 
-            if self.early_stop.step(val_acc):
+            if self.early_stop.step(val_bal_acc):
                 print(f"  Stage3 early stopping at epoch {epoch}")
                 break
 
-        ckpt = torch.load(
-            f"{self.config.save_dir}/stage3_best.pt",
-            map_location=self.device, weights_only=True,
-        )
+        ckpt = torch.load(self._ckpt_path, map_location=self.device, weights_only=True)
         self.model.load_state_dict(ckpt)
-        print(f"  Stage3 done — best val-acc {best_acc:.4f}")
+        print(f"  Stage3 done — best val-bal-acc {best_bal_acc:.4f}")
 
     @torch.no_grad()
     def evaluate(self, loader) -> dict:

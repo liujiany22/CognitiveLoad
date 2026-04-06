@@ -4,13 +4,13 @@ PyTorch datasets and data-loader builders for DualAlign-CogLoad.
 
 import numpy as np
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset, DataLoader, WeightedRandomSampler
 from typing import Dict, List, Tuple, Optional
 from itertools import combinations
 
 
 class CogLoadDataset(Dataset):
-    """Standard dataset that yields (eeg, label, subject_id)."""
+    """Standard dataset that yields (eeg, label, subject_id).  Used by Stage 2 / 3."""
 
     def __init__(self, data: Dict[str, np.ndarray], subject_ids: Optional[List[int]] = None):
         mask = np.ones(len(data["eeg"]), dtype=bool)
@@ -33,88 +33,83 @@ class CogLoadDataset(Dataset):
 
 
 class CrossSubjectPairDataset(Dataset):
-    """
-    Yields matched pairs from two different subjects under the same
-    label for Stage-1 cross-subject contrastive pre-training.
+    """CLISA-style cross-subject pair dataset for Stage 1 contrastive learning.
 
-    Positive pair = same label, different subjects.
-    Different labels within the same batch serve as hard negatives.
+    For each subject pair (A, B) and each condition, the *same* epoch-
+    position indices are selected for both subjects, mirroring CLISA's
+    shared-stimulus alignment.
+
+    Positive pair for InfoNCE: position i ↔ position i (different subject).
     """
 
     def __init__(
         self,
         data: Dict[str, np.ndarray],
         subject_ids: List[int],
-        samples_per_pair: int = 64,
+        segs_per_cond: int = 14,
         seed: int = 42,
     ):
         self.rng = np.random.RandomState(seed)
-        self.samples_per_pair = samples_per_pair
+        self.segs_per_cond = segs_per_cond
 
         mask = np.isin(data["subject_ids"], subject_ids)
         self.eeg = data["eeg"][mask]
         self.labels = data["labels"][mask]
         self.subs = data["subject_ids"][mask]
+        self.positions = data["positions"][mask]
 
-        self.unique_subs = sorted(set(subject_ids))
         self.unique_labels = sorted(set(self.labels))
-        self.n_labels = len(self.unique_labels)
 
         self._build_index()
 
-        self.pairs = list(combinations(self.unique_subs, 2))
+        self.pairs = list(combinations(sorted(set(subject_ids)), 2))
         self.rng.shuffle(self.pairs)
 
     def _build_index(self):
-        """Map (subject, label) → list of sample indices."""
-        self.index: Dict[Tuple[int, int], List[int]] = {}
+        self.pos_to_idx: Dict[Tuple[int, int, int], int] = {}
+        self.available_pos: Dict[Tuple[int, int], List[int]] = {}
         for i in range(len(self.eeg)):
-            key = (int(self.subs[i]), int(self.labels[i]))
-            self.index.setdefault(key, []).append(i)
+            s, l, p = int(self.subs[i]), int(self.labels[i]), int(self.positions[i])
+            self.pos_to_idx[(s, l, p)] = i
+            self.available_pos.setdefault((s, l), []).append(p)
 
     def __len__(self):
         return len(self.pairs)
 
     def __getitem__(self, idx):
         sub_a, sub_b = self.pairs[idx % len(self.pairs)]
-        eeg_a_list, eeg_b_list, labels_list = [], [], []
-
-        per_label = max(1, self.samples_per_pair // self.n_labels)
+        eeg_a_list, eeg_b_list = [], []
 
         for lbl in self.unique_labels:
-            pool_a = self.index.get((sub_a, lbl), [])
-            pool_b = self.index.get((sub_b, lbl), [])
-            if not pool_a or not pool_b:
+            common = sorted(
+                set(self.available_pos.get((sub_a, lbl), []))
+                & set(self.available_pos.get((sub_b, lbl), []))
+            )
+            if not common:
                 continue
 
-            k = min(per_label, len(pool_a), len(pool_b))
-            sel_a = self.rng.choice(pool_a, k, replace=len(pool_a) < k)
-            sel_b = self.rng.choice(pool_b, k, replace=len(pool_b) < k)
+            k = min(self.segs_per_cond, len(common))
+            chosen = self.rng.choice(common, k, replace=False)
 
-            eeg_a_list.append(self.eeg[sel_a])
-            eeg_b_list.append(self.eeg[sel_b])
-            labels_list.append(self.labels[sel_a])
+            for p in chosen:
+                eeg_a_list.append(self.eeg[self.pos_to_idx[(sub_a, lbl, p)]])
+                eeg_b_list.append(self.eeg[self.pos_to_idx[(sub_b, lbl, p)]])
 
         if not eeg_a_list:
             return self.__getitem__((idx + 1) % len(self.pairs))
 
-        eeg_a = np.concatenate(eeg_a_list, axis=0)
-        eeg_b = np.concatenate(eeg_b_list, axis=0)
-        labels = np.concatenate(labels_list, axis=0)
-
         return {
-            "eeg_a": torch.from_numpy(eeg_a).unsqueeze(1).float(),  # (K, 1, C, T)
-            "eeg_b": torch.from_numpy(eeg_b).unsqueeze(1).float(),
-            "labels": torch.from_numpy(labels).long(),
+            "eeg_a": torch.from_numpy(np.stack(eeg_a_list)).unsqueeze(1).float(),
+            "eeg_b": torch.from_numpy(np.stack(eeg_b_list)).unsqueeze(1).float(),
         }
 
 
 def _collate_pair(batch):
-    """Collate variable-size pair batches by concatenation."""
-    eeg_a = torch.cat([b["eeg_a"] for b in batch], dim=0)
-    eeg_b = torch.cat([b["eeg_b"] for b in batch], dim=0)
-    labels = torch.cat([b["labels"] for b in batch], dim=0)
-    return {"eeg_a": eeg_a, "eeg_b": eeg_b, "labels": labels}
+    """Collate pair batches by concatenation."""
+    return {
+        "eeg_a": torch.cat([b["eeg_a"] for b in batch], dim=0),
+        "eeg_b": torch.cat([b["eeg_b"] for b in batch], dim=0),
+    }
 
 
 def build_dataloaders(
@@ -135,7 +130,7 @@ def build_dataloaders(
     # Stage 1 — cross-subject pairs (train subs only)
     pair_ds = CrossSubjectPairDataset(
         data, train_subs,
-        samples_per_pair=config.stage1_batch_size,
+        segs_per_cond=config.stage1_segs_per_cond,
         seed=config.seed,
     )
     pair_loader = DataLoader(
@@ -143,7 +138,7 @@ def build_dataloaders(
         num_workers=config.num_workers,
     )
 
-    # Stage 2 & 3 — standard loaders
+    # Stage 2 & 3 — standard loaders (unchanged)
     train_ds = CogLoadDataset(data, train_subs)
     val_ds = CogLoadDataset(data, val_subs)
     test_ds = CogLoadDataset(data, test_subs)
@@ -161,8 +156,18 @@ def build_dataloaders(
         num_workers=config.num_workers,
     )
 
+    # Inverse-frequency sampling so each batch has balanced class distribution
+    train_labels = train_ds.labels.numpy()
+    class_counts = np.bincount(train_labels, minlength=config.n_classes).astype(np.float64)
+    sample_weights = 1.0 / class_counts[train_labels]
+    sampler = WeightedRandomSampler(
+        weights=sample_weights,
+        num_samples=len(train_ds),
+        replacement=True,
+    )
+
     finetune_loader = DataLoader(
-        train_ds, batch_size=config.stage3_batch_size, shuffle=True,
+        train_ds, batch_size=config.stage3_batch_size, sampler=sampler,
         num_workers=config.num_workers, drop_last=True,
     )
 

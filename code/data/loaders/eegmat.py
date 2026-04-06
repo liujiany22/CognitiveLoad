@@ -47,13 +47,13 @@ def _read_edf(path: str) -> tuple:
 
 
 def _segment_epochs(data: np.ndarray, sfreq: float,
-                    epoch_sec: float = 2.0) -> np.ndarray:
-    """Non-overlapping sliding window.  Returns (n_epochs, n_ch, n_timepoints)."""
+                    win_sec: float, step_sec: float) -> np.ndarray:
+    """Sliding-window segmentation.  Returns (n_epochs, n_ch, win_samples)."""
     n_ch, n_total = data.shape
-    win = int(epoch_sec * sfreq)
-    n_epochs = n_total // win
-    trimmed = data[:, : n_epochs * win]
-    return trimmed.reshape(n_ch, n_epochs, win).transpose(1, 0, 2)
+    win = int(win_sec * sfreq)
+    step = int(step_sec * sfreq)
+    starts = np.arange(0, n_total - win + 1, step)
+    return np.stack([data[:, s:s + win] for s in starts], axis=0)
 
 
 def _read_subject_info(root_dir: str) -> dict:
@@ -81,7 +81,9 @@ class EEGMATLoader(BaseDatasetLoader):
     label_names = LABEL_NAMES
 
     def cache_tag(self, cfg) -> str:
-        return f"eegmat_ep{cfg.epoch_sec}s_{cfg.sampling_rate}hz"
+        return (f"eegmat_ep{cfg.epoch_sec}s"
+                f"_step{cfg.epoch_step_sec}s"
+                f"_{cfg.sampling_rate}hz")
 
     def load_raw(self, cfg) -> dict:
         if mne is None:
@@ -89,6 +91,7 @@ class EEGMATLoader(BaseDatasetLoader):
 
         root_dir = cfg.data_path
         epoch_sec = cfg.epoch_sec
+        epoch_step = cfg.epoch_step_sec
         target_sfreq = float(cfg.sampling_rate)
 
         edf_files = sorted(glob.glob(os.path.join(root_dir, "Subject*_*.edf")))
@@ -109,7 +112,7 @@ class EEGMATLoader(BaseDatasetLoader):
         print(f"  EEGMAT: found {len(subject_ids)} subjects, "
               f"{len(edf_files)} EDF files")
 
-        all_eeg, all_labels, all_subs = [], [], []
+        all_eeg, all_labels, all_subs, all_positions = [], [], [], []
         n_channels_ref = None
 
         for sid in subject_ids:
@@ -141,19 +144,20 @@ class EEGMATLoader(BaseDatasetLoader):
                           f"{data.shape[0]} ch (expected {n_channels_ref})")
                     continue
 
-                epochs = _segment_epochs(data, sfreq, epoch_sec)
-                n_ep = epochs.shape[0]
+                epochs = _segment_epochs(data, sfreq, epoch_sec, epoch_step)
 
-                for i in range(n_ep):
+                for i in range(epochs.shape[0]):
                     all_eeg.append(epochs[i])
                     all_labels.append(label)
                     all_subs.append(sid)
+                    all_positions.append(i)
 
         labels_arr = np.array(all_labels, dtype=np.int64)
         data_out = {
             "eeg": np.stack(all_eeg).astype(np.float32),
             "labels": labels_arr,
             "subject_ids": np.array(all_subs, dtype=np.int64),
+            "positions": np.array(all_positions, dtype=np.int64),
         }
         print(f"  Total epochs: {len(all_eeg)}  "
               f"(rest={int((labels_arr == 0).sum())}, "

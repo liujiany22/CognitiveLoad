@@ -103,8 +103,8 @@
   <line x1="220" y1="168" x2="248" y2="168" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
 
   <rect x="80" y="210" width="350" height="50" rx="8" fill="#e0f2fe" stroke="#0969da" stroke-dasharray="3"/>
-  <text x="255" y="232" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600">InfoNCE Loss (NT-Xent)</text>
-  <text x="255" y="248" text-anchor="middle" fill="#656d76" font-size="8">同 label、不同 subject 的 EEG pair = positive</text>
+   <text x="255" y="232" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600">InfoNCE Loss (NT-Xent)</text>
+   <text x="255" y="248" text-anchor="middle" fill="#656d76" font-size="8">同条件同位置、不同 subject 的 EEG pair = positive</text>
 
   <!-- Stage 2 区域 -->
   <rect x="30" y="310" width="800" height="170" rx="12" fill="none" stroke="#8250df" stroke-width="2" stroke-dasharray="6"/>
@@ -230,33 +230,40 @@
     <text x="210" y="122" text-anchor="middle" fill="#656d76" font-size="7.5">→ channel reweighting</text>
     <line x1="275" y1="95" x2="298" y2="95" stroke="#bf8700" stroke-width="1.5" marker-end="url(#ah-b)"/>
 
-    <rect x="300" y="55" width="130" height="80" rx="8" fill="#dbeafe" stroke="#0969da" stroke-width="1.5"/>
-    <text x="365" y="74" text-anchor="middle" fill="#0969da" font-size="9" font-weight="700">Temporal Block</text>
-    <line x1="305" y1="79" x2="425" y2="79" stroke="#0969da" stroke-width="0.4" opacity="0.3"/>
-    <text x="365" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">Conv2d: 时域滤波</text>
-    <text x="365" y="108" text-anchor="middle" fill="#656d76" font-size="7.5">BatchNorm + ELU</text>
-    <text x="365" y="122" text-anchor="middle" fill="#656d76" font-size="7.5">AvgPool 下采样</text>
-    <line x1="430" y1="95" x2="453" y2="95" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-p)"/>
+    <rect x="280" y="55" width="115" height="80" rx="8" fill="#dbeafe" stroke="#0969da" stroke-width="1.5"/>
+    <text x="338" y="74" text-anchor="middle" fill="#0969da" font-size="9" font-weight="700">Temporal Block</text>
+    <line x1="285" y1="79" x2="390" y2="79" stroke="#0969da" stroke-width="0.4" opacity="0.3"/>
+    <text x="338" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">Conv2d: 时域滤波</text>
+    <text x="338" y="108" text-anchor="middle" fill="#656d76" font-size="7.5">BatchNorm + ELU</text>
+    <text x="338" y="122" text-anchor="middle" fill="#656d76" font-size="7.5">AvgPool 下采样</text>
+    <line x1="395" y1="95" x2="410" y2="95" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
 
-    <rect x="455" y="55" width="130" height="80" rx="8" fill="#ede9fe" stroke="#8250df" stroke-width="1.5"/>
-    <text x="520" y="74" text-anchor="middle" fill="#8250df" font-size="9" font-weight="700">Spatial Block</text>
-    <line x1="460" y1="79" x2="580" y2="79" stroke="#8250df" stroke-width="0.4" opacity="0.3"/>
-    <text x="520" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">Conv2d(k=(C,1))</text>
-    <text x="520" y="108" text-anchor="middle" fill="#656d76" font-size="7.5">通道折叠为 1</text>
-    <text x="520" y="122" text-anchor="middle" fill="#656d76" font-size="7.5">BatchNorm + ELU + Dropout</text>
-    <line x1="585" y1="95" x2="608" y2="95" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-g)"/>
+    <rect x="412" y="62" width="96" height="66" rx="8" fill="#fff7ed" stroke="#bf8700" stroke-width="1.5" stroke-dasharray="4"/>
+    <text x="460" y="82" text-anchor="middle" fill="#bf8700" font-size="8" font-weight="700">Stratified</text>
+    <text x="460" y="94" text-anchor="middle" fill="#bf8700" font-size="8" font-weight="700">LayerNorm</text>
+    <text x="460" y="110" text-anchor="middle" fill="#656d76" font-size="7">Stage 1: 按被试归一化</text>
+    <text x="460" y="120" text-anchor="middle" fill="#656d76" font-size="7">Stage 2/3: identity</text>
+    <line x1="508" y1="95" x2="523" y2="95" stroke="#bf8700" stroke-width="1.5" marker-end="url(#ah-p)"/>
 
-    <rect x="610" y="55" width="130" height="80" rx="8" fill="#dcfce7" stroke="#1a7f37" stroke-width="1.5"/>
-    <text x="675" y="74" text-anchor="middle" fill="#1a7f37" font-size="9" font-weight="700">Pool + Project</text>
-    <line x1="615" y1="79" x2="735" y2="79" stroke="#1a7f37" stroke-width="0.4" opacity="0.3"/>
-    <text x="675" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">AdaptiveAvgPool</text>
-    <text x="675" y="108" text-anchor="middle" fill="#656d76" font-size="7.5">Flatten</text>
-    <text x="675" y="122" text-anchor="middle" fill="#656d76" font-size="7.5">Linear → embed_dim</text>
-    <line x1="740" y1="95" x2="763" y2="95" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+    <rect x="525" y="55" width="115" height="80" rx="8" fill="#ede9fe" stroke="#8250df" stroke-width="1.5"/>
+    <text x="583" y="74" text-anchor="middle" fill="#8250df" font-size="9" font-weight="700">Spatial Block</text>
+    <line x1="530" y1="79" x2="635" y2="79" stroke="#8250df" stroke-width="0.4" opacity="0.3"/>
+    <text x="583" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">Conv2d(k=(C,1))</text>
+    <text x="583" y="108" text-anchor="middle" fill="#656d76" font-size="7.5">通道折叠为 1</text>
+    <text x="583" y="122" text-anchor="middle" fill="#656d76" font-size="7.5">BatchNorm + ELU + Dropout</text>
+    <line x1="640" y1="95" x2="658" y2="95" stroke="#8250df" stroke-width="1.5" marker-end="url(#ah-g)"/>
 
-    <rect x="765" y="70" width="85" height="50" rx="8" fill="#dcfce7" stroke="#1a7f37" stroke-width="2"/>
-    <text x="808" y="92" text-anchor="middle" fill="#1a7f37" font-size="11" font-weight="700">Embedding</text>
-    <text x="808" y="108" text-anchor="middle" fill="#656d76" font-size="8">(B, embed_dim)</text>
+    <rect x="660" y="55" width="105" height="80" rx="8" fill="#dcfce7" stroke="#1a7f37" stroke-width="1.5"/>
+    <text x="713" y="74" text-anchor="middle" fill="#1a7f37" font-size="9" font-weight="700">Pool + Project</text>
+    <line x1="665" y1="79" x2="760" y2="79" stroke="#1a7f37" stroke-width="0.4" opacity="0.3"/>
+    <text x="713" y="94" text-anchor="middle" fill="#656d76" font-size="7.5">AdaptiveAvgPool</text>
+    <text x="713" y="108" text-anchor="middle" fill="#656d76" font-size="7.5">Flatten</text>
+    <text x="713" y="122" text-anchor="middle" fill="#656d76" font-size="7.5">Linear → embed_dim</text>
+    <line x1="765" y1="95" x2="778" y2="95" stroke="#1a7f37" stroke-width="1.5" marker-end="url(#ah-g)"/>
+
+    <rect x="780" y="70" width="75" height="50" rx="8" fill="#dcfce7" stroke="#1a7f37" stroke-width="2"/>
+    <text x="818" y="92" text-anchor="middle" fill="#1a7f37" font-size="10" font-weight="700">Embed</text>
+    <text x="818" y="108" text-anchor="middle" fill="#656d76" font-size="8">(B, embed_dim)</text>
 
     <!-- 两个实例说明 -->
     <rect x="130" y="165" width="600" height="80" rx="8" fill="#f1f5f9" stroke="#d0d7de" stroke-dasharray="4"/>
@@ -274,6 +281,9 @@
       <div class="highlight hl-s1">
         <strong>Temporal Convolution</strong>: 1D conv 沿时间轴滑动，相当于 learnable band-pass filter bank。多个 filter 捕捉不同 frequency pattern。AvgPool 做 temporal downsampling。
       </div>
+      <div class="highlight" style="margin-top:8px;border-color:var(--orange)">
+        <strong>StratifiedLayerNorm (CLISA)</strong>: 在 Temporal Block 和 Spatial Block 之间，按被试分组进行 LayerNorm。Stage 1 时将同一被试的所有 epoch 视为一组，消除 subject 间分布差异，仅保留 task-relevant 信号。Stage 2/3 时传入 <code>n_per_subject=None</code>，退化为 identity，不影响其他阶段。
+      </div>
       <div class="highlight hl-s2" style="margin-top:8px">
         <strong>Spatial Convolution</strong>: kernel 覆盖全部 channel，一次性做 channel mixing，将 channel 维度折叠为 1。等效于学习 spatial filter 来加权组合不同 electrode 信号。
       </div>
@@ -287,6 +297,7 @@
         <tr><th>模块</th><th>实现</th><th>文件</th></tr>
         <tr><td>ChannelAttention</td><td><code>ChannelAttention</code></td><td><code>models/encoder.py</code></td></tr>
         <tr><td>temporal_block</td><td><code>nn.Sequential</code></td><td><code>models/encoder.py</code></td></tr>
+        <tr><td>stratified_norm</td><td><code>StratifiedLayerNorm</code></td><td><code>models/encoder.py</code></td></tr>
         <tr><td>spatial_block</td><td><code>nn.Sequential</code></td><td><code>models/encoder.py</code></td></tr>
         <tr><td>adaptive_pool</td><td><code>AdaptiveAvgPool2d</code></td><td><code>models/encoder.py</code></td></tr>
         <tr><td>projection</td><td><code>Flatten + Linear</code></td><td><code>models/encoder.py</code></td></tr>
@@ -301,64 +312,74 @@
 <div class="panel" id="panel-stage1">
 <div class="arch-container">
 
-  <svg viewBox="0 0 820 320" xmlns="http://www.w3.org/2000/svg" style="max-height:320px;margin-bottom:16px">
-    <text x="410" y="20" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="700">Stage 1: Cross-Subject Contrastive Learning</text>
+  <svg viewBox="0 0 820 340" xmlns="http://www.w3.org/2000/svg" style="max-height:340px;margin-bottom:16px">
+    <text x="410" y="20" text-anchor="middle" fill="#1f2328" font-size="13" font-weight="700">Stage 1: Cross-Subject Contrastive Learning (CLISA-style)</text>
 
-    <rect x="60" y="50" width="150" height="42" rx="8" fill="#dbeafe" stroke="#0969da"/>
+    <rect x="60" y="50" width="150" height="50" rx="8" fill="#dbeafe" stroke="#0969da"/>
     <text x="135" y="68" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600">Subject A 的 EEG</text>
-    <text x="135" y="82" text-anchor="middle" fill="#656d76" font-size="8">label = 休息 or 心算</text>
+    <text x="135" y="82" text-anchor="middle" fill="#656d76" font-size="8">条件 c, 位置 p 的 epoch</text>
+    <text x="135" y="93" text-anchor="middle" fill="#656d76" font-size="7">segs_per_cond 个 × 2 条件</text>
 
-    <rect x="270" y="50" width="150" height="42" rx="8" fill="#dbeafe" stroke="#0969da"/>
+    <rect x="270" y="50" width="150" height="50" rx="8" fill="#dbeafe" stroke="#0969da"/>
     <text x="345" y="68" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600">Subject B 的 EEG</text>
-    <text x="345" y="82" text-anchor="middle" fill="#656d76" font-size="8">同 label，不同 subject</text>
+    <text x="345" y="82" text-anchor="middle" fill="#656d76" font-size="8">同条件 c, 同位置 p</text>
+    <text x="345" y="93" text-anchor="middle" fill="#656d76" font-size="7">位置对齐的 epoch pair</text>
 
-    <line x1="135" y1="92" x2="135" y2="116" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
-    <line x1="345" y1="92" x2="345" y2="116" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="135" y1="100" x2="135" y2="120" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="345" y1="100" x2="345" y2="120" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
 
-    <rect x="70" y="118" width="330" height="40" rx="8" fill="#dbeafe" stroke="#0969da" stroke-width="2"/>
-    <text x="235" y="136" text-anchor="middle" fill="#0969da" font-size="10" font-weight="700">cross_encoder (shared weights)</text>
-    <text x="235" y="150" text-anchor="middle" fill="#656d76" font-size="8">同一个 EEGEncoder 实例处理两个 subject 的 EEG</text>
+    <rect x="50" y="122" width="370" height="48" rx="8" fill="#dbeafe" stroke="#0969da" stroke-width="2"/>
+    <text x="235" y="140" text-anchor="middle" fill="#0969da" font-size="10" font-weight="700">cross_encoder (shared weights)</text>
+    <text x="235" y="154" text-anchor="middle" fill="#656d76" font-size="8">含 StratifiedLayerNorm: 按 subject 分组归一化</text>
+    <text x="235" y="165" text-anchor="middle" fill="#656d76" font-size="7">消除 subject 间分布差异，保留 task-relevant 信号</text>
 
-    <line x1="235" y1="158" x2="235" y2="178" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="235" y1="170" x2="235" y2="188" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
 
-    <rect x="100" y="180" width="270" height="36" rx="8" fill="#dbeafe" stroke="#0969da"/>
-    <text x="235" y="197" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600">cross_projector (ContrastiveProjector)</text>
-    <text x="235" y="210" text-anchor="middle" fill="#656d76" font-size="8">embed_dim → proj_dim</text>
+    <rect x="100" y="190" width="270" height="36" rx="8" fill="#dbeafe" stroke="#0969da"/>
+    <text x="235" y="207" text-anchor="middle" fill="#0969da" font-size="10" font-weight="600">cross_projector (ContrastiveProjector)</text>
+    <text x="235" y="220" text-anchor="middle" fill="#656d76" font-size="8">embed_dim → proj_dim (MLP)</text>
 
-    <line x1="235" y1="216" x2="235" y2="236" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
+    <line x1="235" y1="226" x2="235" y2="246" stroke="#0969da" stroke-width="1.5" marker-end="url(#ah-b)"/>
 
-    <rect x="80" y="238" width="380" height="55" rx="8" fill="#e0f2fe" stroke="#0969da" stroke-dasharray="3"/>
-    <text x="270" y="258" text-anchor="middle" fill="#0969da" font-size="10" font-weight="700">InfoNCE Loss (NT-Xent)</text>
-    <text x="270" y="274" text-anchor="middle" fill="#656d76" font-size="8">features = cat([z_a, z_b]) → sim matrix → CE</text>
-    <text x="270" y="288" text-anchor="middle" fill="#656d76" font-size="8">positive: 对角线对应位 | negative: 其他位置</text>
+    <rect x="80" y="248" width="380" height="65" rx="8" fill="#e0f2fe" stroke="#0969da" stroke-dasharray="3"/>
+    <text x="270" y="268" text-anchor="middle" fill="#0969da" font-size="10" font-weight="700">InfoNCE Loss (NT-Xent)</text>
+    <text x="270" y="284" text-anchor="middle" fill="#656d76" font-size="8">sim_matrix = z_a @ z_b.T / τ → 双向 CrossEntropy</text>
+    <text x="270" y="300" text-anchor="middle" fill="#656d76" font-size="8">positive: 对角线 (同位置对应位) | negative: 其他位置</text>
 
     <!-- 右侧说明 -->
-    <rect x="510" y="50" width="290" height="130" rx="8" fill="#f1f5f9" stroke="#d0d7de"/>
-    <text x="655" y="70" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600">Contrastive Pairing 策略</text>
+    <rect x="510" y="50" width="290" height="160" rx="8" fill="#f1f5f9" stroke="#d0d7de"/>
+    <text x="655" y="70" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600">CLISA-style 位置对齐采样</text>
     <text x="655" y="90" text-anchor="middle" fill="#656d76" font-size="8">遍历所有 train subject pair (A, B)</text>
-    <text x="655" y="106" text-anchor="middle" fill="#656d76" font-size="8">按 label (2类: 休息/心算) 采样对齐 epoch</text>
-    <text x="655" y="126" text-anchor="middle" fill="#1a7f37" font-size="8">✓ 同 label、不同 subject = positive</text>
-    <text x="655" y="142" text-anchor="middle" fill="#cf222e" font-size="8">✗ 不同 label = negative (batch 内)</text>
-    <text x="655" y="162" text-anchor="middle" fill="#8250df" font-size="8">目标: 学习 subject-invariant 表征</text>
+    <text x="655" y="106" text-anchor="middle" fill="#656d76" font-size="8">每对 subject 按 2 条件 (休息/心算) 分别采样</text>
+    <text x="655" y="122" text-anchor="middle" fill="#656d76" font-size="8">取两人共有的 epoch 位置 (时间段)</text>
+    <text x="655" y="142" text-anchor="middle" fill="#1a7f37" font-size="8">✓ 同条件 + 同位置 + 不同 subject = positive</text>
+    <text x="655" y="158" text-anchor="middle" fill="#cf222e" font-size="8">✗ batch 内其他所有 pair = negative</text>
+    <text x="655" y="178" text-anchor="middle" fill="#bf8700" font-size="8">每 batch: segs_per_cond × 2 条件 = 28 对 pair</text>
+    <text x="655" y="194" text-anchor="middle" fill="#8250df" font-size="8">目标: 学习 subject-invariant 表征</text>
 
-    <rect x="510" y="200" width="290" height="80" rx="8" fill="#f1f5f9" stroke="#d0d7de"/>
-    <text x="655" y="220" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600">优化配置</text>
-    <text x="655" y="238" text-anchor="middle" fill="#656d76" font-size="8">AdamW | CosineAnnealingLR</text>
-    <text x="655" y="254" text-anchor="middle" fill="#656d76" font-size="8">Grad clip = 1.0 | Early stopping</text>
-    <text x="655" y="270" text-anchor="middle" fill="#656d76" font-size="8">仅训练 cross_encoder + cross_projector</text>
+    <rect x="510" y="230" width="290" height="80" rx="8" fill="#f1f5f9" stroke="#d0d7de"/>
+    <text x="655" y="250" text-anchor="middle" fill="#1f2328" font-size="10" font-weight="600">优化配置</text>
+    <text x="655" y="268" text-anchor="middle" fill="#656d76" font-size="8">AdamW | CosineAnnealingLR</text>
+    <text x="655" y="284" text-anchor="middle" fill="#656d76" font-size="8">Grad clip = 1.0 | Early stopping</text>
+    <text x="655" y="300" text-anchor="middle" fill="#656d76" font-size="8">仅训练 cross_encoder + cross_projector</text>
   </svg>
 
   <div class="card">
-    <h3><span class="badge badge-s1">Stage 1</span> Cross-Subject Contrastive Pre-training</h3>
+    <h3><span class="badge badge-s1">Stage 1</span> Cross-Subject Contrastive Pre-training (CLISA-style)</h3>
     <p class="note" style="margin-bottom:12px">
-      借鉴 CL-SSTER。学习 shared EEG representation space，使不同 subject 的同 label 样本靠近，不同 label 样本远离。
+      借鉴 CLISA 的跨被试对比学习范式。对每对 train subject (A, B)，按条件和时间位置对齐采样 EEG epoch。
+      通过 InfoNCE 学习 subject-invariant 表征，使同条件同位置的不同被试 EEG 靠近，batch 内其他样本远离。
+      Encoder 内嵌 StratifiedLayerNorm，在 Stage 1 按被试分组归一化，消除个体分布差异。
     </p>
     <div class="highlight hl-s1">
-      <strong>数据:</strong> <code>CrossSubjectPairDataset</code> — 遍历所有 train subject pair (A, B)，按 label (休息/心算) 采样对齐的 EEG epoch。同 label pair = positive，batch 内不同 label = hard negative。
+      <strong>采样策略:</strong> <code>CrossSubjectPairDataset</code> — 遍历所有 train subject pair (A, B)。对每对 subject、每个条件 (休息/心算)，找到两人共有的 epoch 位置，随机采样 <code>segs_per_cond</code> 个位置。A 和 B 在相同位置的 epoch 组成 positive pair；batch 内不同位置/不同条件的样本互为 negative。
+    </div>
+    <div class="highlight" style="border-color:var(--orange); margin-top:8px">
+      <strong>StratifiedLayerNorm:</strong> 在 temporal conv 之后、spatial conv 之前，按被试分组做 LayerNorm。每个 subject 的所有 epoch 共享一组 mean/std 进行归一化，抹平个体间分布差异。仅在 Stage 1 激活 (<code>n_per_subject≠None</code>)，Stage 2/3 自动退化为 identity。
     </div>
     <table style="margin-top:12px">
       <tr><th>模块</th><th>状态</th></tr>
-      <tr><td><code>cross_encoder</code></td><td class="trainable" style="color:var(--s1)">Trainable</td></tr>
+      <tr><td><code>cross_encoder</code> (含 <code>StratifiedLayerNorm</code>)</td><td class="trainable" style="color:var(--s1)">Trainable</td></tr>
       <tr><td><code>cross_projector</code></td><td class="trainable" style="color:var(--s1)">Trainable</td></tr>
       <tr><td>其他模块</td><td class="frozen">Frozen / Unused</td></tr>
     </table>

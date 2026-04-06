@@ -60,8 +60,29 @@ class AlignmentProjector(nn.Module):
 
 
 class DualAlignModel(nn.Module):
+    # Maps ablation mode → tuple of active branch names.
+    # Extend this dict to add new feature-selection ablations.
+    _BRANCH_MAP: dict[str, tuple[str, ...]] = {
+        "":           ("cross", "align"),   # full dual-branch (default)
+        "cross_only": ("cross",),           # stage-1 features only
+        "align_only": ("align",),           # stage-2 features only
+    }
+
+    @classmethod
+    def branch_modes(cls) -> dict[str, tuple[str, ...]]:
+        """Available ablation modes and their active branches."""
+        return dict(cls._BRANCH_MAP)
+
     def __init__(self, config):
         super().__init__()
+        self.ablation = getattr(config, "ablation", "")
+        if self.ablation not in self._BRANCH_MAP:
+            raise ValueError(
+                f"Unknown ablation mode '{self.ablation}'. "
+                f"Choose from {list(self._BRANCH_MAP)}"
+            )
+        self._active_branches = self._BRANCH_MAP[self.ablation]
+
         enc_kwargs = dict(
             n_channels=config.n_channels,
             n_temporal_filters=config.n_temporal_filters,
@@ -92,8 +113,9 @@ class DualAlignModel(nn.Module):
         self.logit_scale = nn.Parameter(torch.log(torch.tensor(1.0 / config.temperature)))
 
         # ── Fusion + classifier (Stage 3) ──
+        fusion_in = config.embed_dim * len(self._active_branches)
         self.fusion = nn.Sequential(
-            nn.Linear(config.embed_dim * 2, config.fusion_dim),
+            nn.Linear(fusion_in, config.fusion_dim),
             nn.ReLU(inplace=True),
             nn.Dropout(config.classifier_dropout),
             nn.Linear(config.fusion_dim, config.fusion_dim),
@@ -105,8 +127,9 @@ class DualAlignModel(nn.Module):
         self._config = config
 
     # ── Stage 1 ──
-    def forward_cross_subject(self, eeg: torch.Tensor) -> torch.Tensor:
-        feat = self.cross_encoder(eeg)
+    def forward_cross_subject(self, eeg: torch.Tensor,
+                              n_per_subject: int | None = None) -> torch.Tensor:
+        feat = self.cross_encoder(eeg, n_per_subject=n_per_subject)
         return self.cross_projector(feat)
 
     # ── Stage 2: align EEG with frozen text embeddings ──
@@ -120,13 +143,29 @@ class DualAlignModel(nn.Module):
         return eeg_proj, text_emb, self.logit_scale.exp()
 
     # ── Stage 3 / inference ──
+    def _extract_features(self, eeg: torch.Tensor) -> torch.Tensor:
+        """Route through active branches based on ablation mode."""
+        feats = []
+        if "cross" in self._active_branches:
+            feats.append(self.cross_encoder(eeg))
+        if "align" in self._active_branches:
+            feats.append(self.align_encoder(eeg))
+        return torch.cat(feats, dim=-1) if len(feats) > 1 else feats[0]
+
     def forward(self, eeg: torch.Tensor) -> torch.Tensor:
-        cross_feat = self.cross_encoder(eeg)
-        align_feat = self.align_encoder(eeg)
-        combined = torch.cat([cross_feat, align_feat], dim=-1)
-        fused = self.fusion(combined)
-        return self.classifier(fused)
+        feat = self._extract_features(eeg)
+        return self.classifier(self.fusion(feat))
 
     def init_align_from_cross(self):
         """Initialise the alignment encoder from the cross-subject encoder."""
         self.align_encoder.load_state_dict(self.cross_encoder.state_dict())
+
+    def load_compatible_state_dict(self, state_dict: dict):
+        """Load weights, silently skipping keys whose shapes don't match
+        (e.g. fusion layer after changing ablation mode)."""
+        own = self.state_dict()
+        compatible = {
+            k: v for k, v in state_dict.items()
+            if k in own and v.shape == own[k].shape
+        }
+        self.load_state_dict(compatible, strict=False)

@@ -84,21 +84,46 @@ ChannelAttention (SE-style)
 pip install -r requirements.txt
 ```
 
-### Run with EEGMAT dataset
+### Training (step by step)
+
+Each stage is a standalone script.  Run them in order:
 
 ```bash
-# Full pipeline (all 3 stages)
-python main.py --data_source eegmat --data_path datasets/eegmat
+# Step 1 — Cross-subject contrastive pre-training
+#   Creates a timestamped run directory (e.g. checkpoints/20260404_1523/)
+python train_stage1.py
 
-# Run only Stage 3 (loads pre-trained checkpoints)
-python main.py --data_source eegmat --data_path datasets/eegmat --stage 3
+# Step 2 — Stimulus-task alignment (pass the run dir from step 1)
+python train_stage2.py --run_dir checkpoints/20260404_1523
 
-# Freeze encoders during fine-tuning
-python main.py --data_source eegmat --data_path datasets/eegmat --freeze_encoders
+# Step 3 — Classification fine-tuning
+python train_stage3.py --run_dir checkpoints/20260404_1523
 
-# Custom epoch length and fewer training epochs
-python main.py --data_source eegmat --data_path datasets/eegmat \
-    --epoch_sec 4.0 --stage1_epochs 10 --stage2_epochs 10 --stage3_epochs 10
+# Evaluate on held-out test set
+python evaluate.py --run_dir checkpoints/20260404_1523
+```
+
+### Common options
+
+```bash
+# Custom dataset location / epoch length / fewer epochs
+python train_stage1.py --data_path /my/data --epoch_sec 4.0 --stage1_epochs 30
+
+# Freeze encoders during Stage 3
+python train_stage3.py --run_dir checkpoints/20260404_1523 --freeze_encoders
+```
+
+### Ablation experiments
+
+```bash
+# Stage-1 features only (automatically skips Stage-2 weights)
+python train_stage3.py --run_dir checkpoints/20260404_1523 --ablation cross_only
+
+# Stage-2 features only
+python train_stage3.py --run_dir checkpoints/20260404_1523 --ablation align_only
+
+# Evaluate an ablation variant
+python evaluate.py --run_dir checkpoints/20260404_1523 --ablation cross_only
 ```
 
 ## Adding a New Dataset
@@ -172,8 +197,12 @@ Additionally, set the `n_classes` and `label_names` class attributes on the load
 
 ```
 code/
+├── train_stage1.py        # Entry point — Stage 1 pre-training
+├── train_stage2.py        # Entry point — Stage 2 alignment
+├── train_stage3.py        # Entry point — Stage 3 fine-tuning
+├── evaluate.py            # Entry point — test-set evaluation
+├── pipeline.py            # Shared setup (config, data, splits)
 ├── config.py              # All hyperparameters
-├── main.py                # Training pipeline entry point
 ├── losses.py              # InfoNCE, CLIP, CE losses
 ├── utils.py               # Metrics, seeding, helpers
 ├── data/
@@ -183,7 +212,7 @@ code/
 │   ├── dataset.py         # PyTorch datasets & loaders
 │   └── loaders/           # ← drop new dataset loaders here
 │       ├── __init__.py    # Auto-discovery of loader modules
-│       └── eegmat.py      # EEGMAT dataset loader (defines labels & class names)
+│       └── eegmat.py      # EEGMAT dataset loader
 ├── models/
 │   ├── encoder.py         # EEG encoder + channel attention
 │   └── dual_align.py      # Full DualAlign model
@@ -191,8 +220,9 @@ code/
 │   ├── stage1.py          # Cross-subject pre-training
 │   ├── stage2.py          # Stimulus alignment
 │   └── stage3.py          # Classification fine-tuning
-├── checkpoints/           # Saved model weights
-└── logs/                  # Training logs & results
+├── checkpoints/           # Timestamped run directories
+│   └── 20260404_1523/     #   stage1_best.pt, stage2_best.pt, ...
+└── logs/                  # Evaluation results
 ```
 
 ## Key Differences from Original Works

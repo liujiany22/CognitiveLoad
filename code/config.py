@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 import os
+from typing import List, Optional
 import torch
 
 
@@ -34,6 +35,7 @@ class Config:
     stage1_lr: float = 1e-3
     stage1_weight_decay: float = 1e-2
     stage1_batch_size: int = 64
+    stage1_segs_per_cond: int = 14   # segments sampled per condition per subject pair
 
     # ── Stage 2  Stimulus-Task Alignment ──
     stage2_epochs: int = 80
@@ -46,8 +48,14 @@ class Config:
     stage3_lr: float = 1e-4
     stage3_weight_decay: float = 1e-2
     stage3_batch_size: int = 64
-    fusion_dim: int = 256
+    fusion_dim: int = 64
     classifier_dropout: float = 0.3
+
+    # ── Ablation ──
+    ablation: str = ""               # "", "cross_only", "align_only"
+
+    # ── Checkpointing ──
+    ckpt_every: int = 20             # save checkpoint every N epochs (0 = off)
 
     # ── General ──
     seed: int = 42
@@ -60,8 +68,12 @@ class Config:
 
     # ── Data source ──
     data_source: str = "eegmat"      # registered loader name
-    data_path: str = ""              # root directory of the dataset
+    data_path: str = "datasets/eegmat"  # root directory of the dataset
     epoch_sec: float = 2.0           # epoch length (seconds) for epoching
+    epoch_step_sec: float = 2.0      # sliding-window step; set < epoch_sec for overlap
+
+    # ── Computed at runtime ──
+    class_weights: Optional[List[float]] = None  # inverse-frequency weights per class
 
     def __post_init__(self):
         os.makedirs(self.save_dir, exist_ok=True)

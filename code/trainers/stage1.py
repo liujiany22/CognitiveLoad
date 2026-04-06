@@ -1,10 +1,9 @@
 """
-Stage 1 — Cross-Subject Contrastive Pre-training (CL-SSTER inspired).
+Stage 1 — Cross-Subject Contrastive Pre-training (CLISA-style InfoNCE).
 
-Pairs of subjects performing the same task condition are treated as
-positive pairs.  The encoder learns to project EEG from different
-subjects into a shared latent space where same-condition representations
-are close and different-condition representations are far apart.
+Each batch contains paired segments from two subjects at the same
+epoch positions.  Positive pair = same position, different subjects.
+All other positions are negatives.
 """
 
 import torch
@@ -47,9 +46,10 @@ class Stage1Trainer:
             for batch in pbar:
                 eeg_a = batch["eeg_a"].to(self.device)
                 eeg_b = batch["eeg_b"].to(self.device)
+                n_per = eeg_a.size(0)
 
-                z_a = self.model.forward_cross_subject(eeg_a)
-                z_b = self.model.forward_cross_subject(eeg_b)
+                z_a = self.model.forward_cross_subject(eeg_a, n_per_subject=n_per)
+                z_b = self.model.forward_cross_subject(eeg_b, n_per_subject=n_per)
 
                 loss, acc = self.criterion(z_a, z_b)
 
@@ -58,8 +58,8 @@ class Stage1Trainer:
                 torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
                 self.optimizer.step()
 
-                loss_meter.update(loss.item(), eeg_a.size(0))
-                acc_meter.update(acc.item(), eeg_a.size(0))
+                loss_meter.update(loss.item(), n_per)
+                acc_meter.update(acc.item(), n_per)
                 pbar.set_postfix(loss=f"{loss_meter.avg:.4f}", acc=f"{acc_meter.avg:.4f}")
 
             self.scheduler.step()
@@ -67,7 +67,7 @@ class Stage1Trainer:
             print(
                 f"  Stage1 Epoch {epoch:3d}  |  "
                 f"loss {loss_meter.avg:.4f}  |  "
-                f"pair-acc {acc_meter.avg:.4f}"
+                f"nn-acc {acc_meter.avg:.4f}"
             )
 
             if loss_meter.avg < best_loss:
@@ -75,6 +75,13 @@ class Stage1Trainer:
                 torch.save(
                     self.model.state_dict(),
                     f"{self.config.save_dir}/stage1_best.pt",
+                )
+
+            every = self.config.ckpt_every
+            if every > 0 and epoch % every == 0:
+                torch.save(
+                    self.model.state_dict(),
+                    f"{self.config.save_dir}/stage1_epoch_{epoch}.pt",
                 )
 
             if self.early_stop.step(loss_meter.avg):

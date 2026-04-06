@@ -90,6 +90,13 @@ class Stage2Trainer:
                     f"{self.config.save_dir}/stage2_best.pt",
                 )
 
+            every = self.config.ckpt_every
+            if every > 0 and epoch % every == 0:
+                torch.save(
+                    self.model.state_dict(),
+                    f"{self.config.save_dir}/stage2_epoch_{epoch}.pt",
+                )
+
             if self.early_stop.step(val_loss):
                 print(f"  Stage2 early stopping at epoch {epoch}")
                 break

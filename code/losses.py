@@ -1,10 +1,9 @@
 """
 Loss functions for the three training stages.
 
-Stage 1  — InfoNCE  (NT-Xent):  cross-subject contrastive
-Stage 2A — SupConLoss:          shape text projection space by condition labels
-Stage 2B — CLIPLoss (bidir CE): EEG ↔ refined-text alignment
-Stage 3  — CE:                  classification with label smoothing
+Stage 1  — InfoNCELoss: cross-subject contrastive (CLISA-style)
+Stage 2  — CLIPLoss:    EEG ↔ frozen-text bidirectional alignment
+Stage 3  — CogLoadLoss: classification CE with label smoothing
 """
 
 import torch
@@ -49,12 +48,11 @@ class InfoNCELoss(nn.Module):
 
 class SupConLoss(nn.Module):
     """
-    Supervised contrastive loss for shaping the text projection space
-    (Stage 2, Phase A — analogous to NICE++ Image↔Text loss).
+    Supervised contrastive loss (Khosla et al., 2020).
 
-    Samples with the same condition label form positive pairs; all others
-    are negatives.  This pushes text projections of the same condition
-    together and different conditions apart.
+    All samples sharing the same label form positive pairs; the rest
+    are negatives.  Returns (loss, nn_acc) where nn_acc is the
+    nearest-neighbour retrieval accuracy.
     """
 
     def __init__(self, temperature: float = 0.07):
@@ -78,14 +76,18 @@ class SupConLoss(nn.Module):
 
         # log-softmax over all non-self entries
         self_mask = torch.eye(B, device=device)
-        logits = sim - 1e9 * self_mask  # mask self
+        logits = sim - 1e9 * self_mask
         log_prob = logits - torch.logsumexp(logits, dim=1, keepdim=True)
 
-        # mean log-prob of positives
         mean_log_prob = (pos_mask * log_prob).sum(dim=1) / (n_pos + 1e-8)
         loss = -mean_log_prob[has_pos].mean()
 
-        return loss
+        with torch.no_grad():
+            sim_nn = sim.clone()
+            sim_nn.fill_diagonal_(-1e9)
+            acc = (labels[sim_nn.argmax(dim=1)] == labels).float().mean()
+
+        return loss, acc
 
 
 class CLIPLoss(nn.Module):
@@ -117,11 +119,15 @@ class CLIPLoss(nn.Module):
 
 
 class CogLoadLoss(nn.Module):
-    """Stage-3 loss: classification CE with label smoothing."""
+    """Stage-3 loss: classification CE with label smoothing and optional class balancing."""
 
-    def __init__(self, n_classes: int = 2, label_smoothing: float = 0.05):
+    def __init__(self, n_classes: int = 2, label_smoothing: float = 0.05,
+                 class_weights: list[float] | None = None):
         super().__init__()
-        self.ce = nn.CrossEntropyLoss(label_smoothing=label_smoothing)
+        weight = torch.tensor(class_weights, dtype=torch.float32) if class_weights else None
+        self.register_buffer("weight", weight)
+        self.label_smoothing = label_smoothing
 
     def forward(self, logits: torch.Tensor, labels: torch.Tensor) -> torch.Tensor:
-        return self.ce(logits, labels)
+        return F.cross_entropy(logits, labels, weight=self.weight,
+                               label_smoothing=self.label_smoothing)

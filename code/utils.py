@@ -2,7 +2,9 @@ import random
 import numpy as np
 import torch
 from sklearn.metrics import (
-    accuracy_score, f1_score, confusion_matrix, classification_report,
+    accuracy_score, balanced_accuracy_score, f1_score,
+    precision_score, recall_score,
+    confusion_matrix, classification_report, cohen_kappa_score,
 )
 
 
@@ -17,20 +19,34 @@ def set_seed(seed: int):
 
 
 def compute_metrics(y_true, y_pred, label_names=None):
+    labels = sorted(set(y_true) | set(y_pred))
     if label_names is None:
-        label_names = ["low", "mid", "high"]
+        label_names = [str(l) for l in labels]
+
     acc = accuracy_score(y_true, y_pred)
-    f1_macro = f1_score(y_true, y_pred, average="macro")
-    f1_per = f1_score(y_true, y_pred, average=None)
-    cm = confusion_matrix(y_true, y_pred)
+    bal_acc = balanced_accuracy_score(y_true, y_pred)
+    kappa = cohen_kappa_score(y_true, y_pred)
+
+    f1_macro = f1_score(y_true, y_pred, average="macro", labels=labels)
+    f1_per = f1_score(y_true, y_pred, average=None, labels=labels)
+    prec_per = precision_score(y_true, y_pred, average=None, labels=labels,
+                               zero_division=0)
+    rec_per = recall_score(y_true, y_pred, average=None, labels=labels,
+                           zero_division=0)
+
+    cm = confusion_matrix(y_true, y_pred, labels=labels)
     report = classification_report(
-        y_true, y_pred, target_names=label_names, digits=4,
-        zero_division=0,
+        y_true, y_pred, target_names=label_names, labels=labels,
+        digits=4, zero_division=0,
     )
     return {
         "accuracy": acc,
+        "balanced_accuracy": bal_acc,
+        "kappa": kappa,
         "f1_macro": f1_macro,
         "f1_per_class": dict(zip(label_names, f1_per.tolist())),
+        "precision_per_class": dict(zip(label_names, prec_per.tolist())),
+        "recall_per_class": dict(zip(label_names, rec_per.tolist())),
         "confusion_matrix": cm,
         "report": report,
     }

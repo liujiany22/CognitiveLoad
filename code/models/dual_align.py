@@ -16,7 +16,8 @@ Stage 3 pipeline (CLISA-style, handled by Stage3Trainer):
 import torch
 import torch.nn as nn
 
-from .cross_encoder import CrossEncoder, DifferentialEntropy
+# <de> before: from .cross_encoder import CrossEncoder, DifferentialEntropy
+from .cross_encoder import CrossEncoder
 from .align_encoder import AlignEncoder
 
 
@@ -88,12 +89,15 @@ class DualAlign(nn.Module):
 
         self.logit_scale = nn.Parameter(torch.log(torch.tensor(1.0 / config.temperature)))
 
-        # ── Stage 3 classifier (CLISA-style: frozen encoder → DE → MLP) ──
-        self.de_layer = DifferentialEntropy()
-        de_dim = config.cross_n_time_filters * config.cross_n_spatial_filters
+        # ── Stage 3 classifier ──
+        # <de> before: used DifferentialEntropy on intermediate features (dim=256)
+        # self.de_layer = DifferentialEntropy()
+        # de_dim = config.cross_n_time_filters * config.cross_n_spatial_filters
+        # <de> after: use full CrossEncoder output (dim=cross_encoder.out_dim)
+        feat_dim = self.cross_encoder.out_dim
         h = config.classifier_hidden
         self.classifier = nn.Sequential(
-            nn.Linear(de_dim, h),
+            nn.Linear(feat_dim, h),
             nn.ReLU(),
             nn.Linear(h, h),
             nn.ReLU(),
@@ -115,19 +119,29 @@ class DualAlign(nn.Module):
         return eeg_proj, text_emb, self.logit_scale.exp()
 
     # ── Stage 3 / inference ──
+    # <de> before: extract_de used forward_intermediate + DifferentialEntropy
+    # @torch.no_grad()
+    # def extract_de(self, eeg):
+    #     intermediate = self.cross_encoder.forward_intermediate(eeg)
+    #     return self.de_layer(intermediate)
+    # <de> after: extract_features uses full CrossEncoder forward
     @torch.no_grad()
-    def extract_de(self, eeg: torch.Tensor) -> torch.Tensor:
-        """Extract DE features without running the classifier."""
-        intermediate = self.cross_encoder.forward_intermediate(eeg)
-        return self.de_layer(intermediate)
+    def extract_features(self, eeg: torch.Tensor) -> torch.Tensor:
+        """Extract features using the full CrossEncoder."""
+        return self.cross_encoder(eeg)
 
     def forward_from_de(self, de_feat: torch.Tensor) -> torch.Tensor:
-        """Run the classifier on pre-extracted DE features."""
+        """Run the classifier on pre-extracted features."""
         return self.classifier(de_feat)
 
+    # <de> before: forward used forward_intermediate + DE
+    # def forward(self, eeg):
+    #     intermediate = self.cross_encoder.forward_intermediate(eeg)
+    #     feat = self.de_layer(intermediate)
+    #     return self.classifier(feat)
+    # <de> after: forward uses full CrossEncoder
     def forward(self, eeg: torch.Tensor) -> torch.Tensor:
-        intermediate = self.cross_encoder.forward_intermediate(eeg)
-        feat = self.de_layer(intermediate)
+        feat = self.cross_encoder(eeg)
         return self.classifier(feat)
 
     def load_compatible_state_dict(self, state_dict: dict):

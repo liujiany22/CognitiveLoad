@@ -60,8 +60,7 @@ class Config:
     stage3_weight_decay: float = 0.001
     stage3_batch_size: int = 270
     stage3_patience: int = 50
-    # classifier_hidden: int = 30
-    classifier_hidden: int = 256
+    classifier_hidden: int = 30
     de_extract_sec: float = 1.0      # DE feature extraction window (CLISA uses 1 s)
 
     # ── Ablation ──

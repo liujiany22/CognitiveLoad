@@ -1,17 +1,12 @@
 """
-Stage 3 — Classification.
+Stage 3 — Classification (CLISA-style).
 
-# <de> before: CLISA-style pipeline
-#   1. Sub-segment 5 s epochs → 1 s windows  (de_extract_sec)
-#   2. Frozen encoder → intermediate features → Differential Entropy
-#   3. normTrain  — z-score DE features using training-set mean / var
-#   4. LDS smooth — Kalman filter along consecutive temporal windows
-#   5. Train a shallow 3-layer MLP on processed DE features
-# <de> after: full encoder pipeline
-#   1. Frozen full CrossEncoder on original 5 s epochs
-#   2. normTrain  — z-score features using training-set mean / var
-#   3. LDS smooth — Kalman filter per (subject, condition) sequence
-#   4. Train a shallow 3-layer MLP on processed features
+Pipeline:
+  1. Sub-segment epochs → de_extract_sec windows (e.g. 1 s)
+  2. Frozen CrossEncoder Block 1 → Differential Entropy → (M, n_tf × n_sf)
+  3. normTrain  — z-score DE features using training-set mean / var
+  4. LDS smooth — Kalman filter along consecutive temporal windows
+  5. Train a shallow 3-layer MLP on processed DE features
 """
 
 import numpy as np
@@ -62,11 +57,15 @@ class Stage3Trainer(BaseTrainer):
         return opt, sched
 
     # ── Feature pre-extraction pipeline ─────────────────────────────────
-    # <de> before: sub-segmented 5s→1s, then forward_intermediate + DE → (M, 256)
-    # <de> after:  full CrossEncoder on original 5s epochs → (N, out_dim)
 
     def prepare_de_loaders(self, data, train_subs, val_subs, test_subs):
-        """Extract features → normTrain → LDS → DataLoaders.
+        """Extract DE features → normTrain → LDS → DataLoaders.
+
+        CLISA-style pipeline:
+          1. Sub-segment epochs → de_extract_sec windows
+          2. Frozen CrossEncoder Block 1 → DifferentialEntropy
+          3. normTrain (z-score with training-set stats)
+          4. LDS smooth per (subject, condition) group
 
         Returns
         -------
@@ -84,26 +83,42 @@ class Stage3Trainer(BaseTrainer):
             positions_arr = np.arange(len(eeg_all), dtype=np.int64)
         else:
             positions_arr = positions_arr.astype(np.int64)
+
+        # 1. Sub-segment epochs → de_extract_sec windows
+        N, C, T = eeg_all.shape
+        sub_win = int(cfg.de_extract_sec * cfg.sampling_rate)
+        n_sub = T // sub_win
+
+        if n_sub > 1:
+            eeg_cut = eeg_all[:, :, :n_sub * sub_win]
+            eeg_cut = eeg_cut.reshape(N, C, n_sub, sub_win)
+            eeg_all = eeg_cut.transpose(0, 2, 1, 3).reshape(N * n_sub, C, sub_win)
+            labels_arr = np.repeat(labels_arr, n_sub)
+            subjects_arr = np.repeat(subjects_arr, n_sub)
+            positions_arr = (np.repeat(positions_arr * n_sub, n_sub)
+                             + np.tile(np.arange(n_sub), N))
+            print(f"  Sub-segmented: {N} epochs × {n_sub} windows "
+                  f"({cfg.de_extract_sec}s) → {len(eeg_all)} samples")
+
         n_total = len(eeg_all)
+        print(f"  DE extraction: {n_total} windows")
 
-        print(f"  Feature extraction: {n_total} epochs")
-
-        # 1. Extract features through full frozen CrossEncoder
+        # 2. Frozen CrossEncoder Block 1 → DifferentialEntropy
         self.model.to(self.device)
         self.model.eval()
-        eeg_t = torch.from_numpy(eeg_all).unsqueeze(1).float()   # (N, 1, C, T)
+        eeg_t = torch.from_numpy(eeg_all).unsqueeze(1).float()
 
         feat_parts: list[np.ndarray] = []
         bs = 256
         with torch.no_grad():
             for i in range(0, n_total, bs):
                 batch = eeg_t[i:i + bs].to(self.device)
-                feat_parts.append(self.model.extract_features(batch).cpu().numpy())
+                feat_parts.append(self.model.extract_de(batch).cpu().numpy())
 
-        features = np.concatenate(feat_parts, axis=0)             # (N, feat_dim)
-        print(f"  Features shape: {features.shape}")
+        features = np.concatenate(feat_parts, axis=0)             # (M, de_dim)
+        print(f"  DE features shape: {features.shape}")
 
-        # 2. normTrain — z-score using training-set statistics
+        # 3. normTrain — z-score using training-set statistics
         train_mask = np.isin(subjects_arr, train_subs)
         train_feats = features[train_mask]
         feat_mean = train_feats.mean(axis=0)
@@ -112,7 +127,7 @@ class Stage3Trainer(BaseTrainer):
         print(f"  normTrain: z-scored with training-set stats "
               f"(n_train={int(train_mask.sum())})")
 
-        # 3. LDS smoothing per (subject, condition) group
+        # 4. LDS smoothing per (subject, condition) group
         unique_labels = sorted(set(labels_arr))
         for sid in all_subs:
             for lbl in unique_labels:
@@ -126,7 +141,7 @@ class Stage3Trainer(BaseTrainer):
 
         print("  LDS smoothing applied")
 
-        # 4. Build DataLoaders
+        # 5. Build DataLoaders
         loaders: dict[str, DataLoader] = {}
         for name, subs in [("train", train_subs),
                            ("val", val_subs),

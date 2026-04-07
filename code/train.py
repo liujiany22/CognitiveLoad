@@ -89,6 +89,7 @@ def main():
     model = DualAlign(cfg)
     print(f"  Run dir : {cfg.save_dir}")
     print(f"  Params  : {sum(p.numel() for p in model.parameters()):,}")
+    cfg.save()
 
     if stage == "1":
         run_stage1(model, cfg, loaders)

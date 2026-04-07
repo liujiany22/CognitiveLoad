@@ -1,4 +1,5 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
+import json
 import os
 from typing import List, Optional
 import torch
@@ -55,10 +56,12 @@ class Config:
     # ── Stage 3  Classification (CLISA-style: frozen encoder → DE → MLP) ──
     stage3_epochs: int = 100
     stage3_lr: float = 5e-4
-    stage3_weight_decay: float = 0.05
+    # stage3_weight_decay: float = 0.05
+    stage3_weight_decay: float = 0.001
     stage3_batch_size: int = 270
     stage3_patience: int = 50
-    classifier_hidden: int = 30
+    # classifier_hidden: int = 30
+    classifier_hidden: int = 256
     de_extract_sec: float = 1.0      # DE feature extraction window (CLISA uses 1 s)
 
     # ── Ablation ──
@@ -89,3 +92,19 @@ class Config:
         os.makedirs(self.save_dir, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
         os.makedirs(self.data_dir, exist_ok=True)
+
+    def save(self, path: str | None = None):
+        """Persist all parameters to a JSON file in the checkpoint folder."""
+        path = path or os.path.join(self.save_dir, "config.json")
+        d = asdict(self)
+        d.pop("class_weights", None)  # runtime-computed, not a hyperparameter
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(d, f, indent=2, ensure_ascii=False)
+        print(f"  Config  : {path}")
+
+    @classmethod
+    def load(cls, path: str) -> "Config":
+        """Restore a Config from a previously saved JSON file."""
+        with open(path, encoding="utf-8") as f:
+            d = json.load(f)
+        return cls(**{k: v for k, v in d.items() if hasattr(cls, k)})
